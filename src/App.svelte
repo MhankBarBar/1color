@@ -35,11 +35,35 @@
 
 	// --- locale ------------------------------------------------------------
 
-	let locale = $state('en');
+	const LOCALE_KEY = '1color:locale';
+	const VALID_LOCALES = locales.map((l) => l.id);
+
+	/**
+	 * Restore the saved language, falling back to English.
+	 *
+	 * Wrapped in try/catch: storage access throws in private mode and in
+	 * sandboxed iframes, and an unreadable preference must not stop the app from
+	 * booting.
+	 */
+	function savedLocale() {
+		try {
+			const v = localStorage.getItem(LOCALE_KEY);
+			return VALID_LOCALES.includes(v) ? v : 'en';
+		} catch {
+			return 'en';
+		}
+	}
+
+	let locale = $state(savedLocale());
 	const t = $derived((key) => dict[locale][key] ?? dict.en[key] ?? key);
 
 	$effect(() => {
 		document.documentElement.lang = locale;
+		try {
+			localStorage.setItem(LOCALE_KEY, locale);
+		} catch {
+			// Storage unavailable — the choice simply will not persist.
+		}
 	});
 
 	// --- photo state -------------------------------------------------------
