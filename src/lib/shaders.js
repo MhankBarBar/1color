@@ -72,11 +72,17 @@ uniform float uContrast;
 uniform int uPreset;
 uniform float uMaskOn;
 uniform float uBypass;
+uniform vec4 uCrop;
 `;
 
 const MAIN = (sampleFn, writeFn) => `
 void main() {
-	vec4 src = ${sampleFn}(uImage, vUv);
+	// The ratio crops rather than distorts: uCrop is the kept rect in normalised
+	// photo units. Sampling the image and the mask through the same rect keeps
+	// them registered with each other, so a region mask still lines up with the
+	// pixels it was drawn over.
+	vec2 uv = uCrop.xy + vUv * uCrop.zw;
+	vec4 src = ${sampleFn}(uImage, uv);
 
 	// Before/after comparison: pass the original straight through. Doing this in
 	// the shader keeps the comparison on the same pipeline, so the "before" is
@@ -95,7 +101,7 @@ void main() {
 	float e1 = e0 + max(uFeather * 0.16, 0.0001);
 	float keep = 1.0 - smoothstep(e0, e1, dist);
 
-	if (uMaskOn > 0.5) keep *= ${sampleFn}(uMask, vUv).r;
+	if (uMaskOn > 0.5) keep *= ${sampleFn}(uMask, uv).r;
 
 	float y = shapeTone(luma(c));
 	y = clamp(y + uTone * 0.0025, 0.0, 1.0);
@@ -157,7 +163,8 @@ export const UNIFORMS = [
 	'uContrast',
 	'uPreset',
 	'uMaskOn',
-	'uBypass'
+	'uBypass',
+	'uCrop'
 ];
 
 /** Exported so the tests can check the shaders against the JS wiring without a

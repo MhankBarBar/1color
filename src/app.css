@@ -471,7 +471,8 @@ svg {
 	vector-effect: non-scaling-stroke;
 }
 
-.stage__path {
+/* The lasso is a closed region, so it is filled to show the area it selects. */
+.stage__lasso {
 	fill: rgb(255 255 255 / 0.14);
 	stroke: var(--text);
 	stroke-width: 1.5;

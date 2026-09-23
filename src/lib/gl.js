@@ -45,7 +45,11 @@ const DEFAULTS = {
 	contrast: 0,
 	preset: 0,
 	maskOn: 0,
-	bypass: 0
+	bypass: 0,
+	// The kept rect of the photo, in normalised units — the shape `cropRect` in
+	// export.js returns. The identity is the whole photo, which is what `original`
+	// means.
+	crop: { sx: 0, sy: 0, sw: 1, sh: 1 }
 };
 
 export class Renderer {
@@ -212,6 +216,12 @@ export class Renderer {
 		gl.uniform1i(u.uPreset, params.preset | 0);
 		gl.uniform1f(u.uMaskOn, params.maskOn ? 1 : 0);
 		gl.uniform1f(u.uBypass, params.bypass ? 1 : 0);
+		// `crop` uses the same field names `cropRect` returns. Passing undefined here
+		// does not throw — it uploads NaN, the uv becomes NaN, every texture sample
+		// misses, and the whole photo renders as one flat color with no error
+		// anywhere. That is exactly how it failed once.
+		const cr = params.crop;
+		gl.uniform4f(u.uCrop, cr.sx, cr.sy, cr.sw, cr.sh);
 
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 	}

@@ -12,7 +12,7 @@
 	import { icon } from '../lib/icons.js';
 	import { rgbToHex, hexToRgb, inkOn, pushRecent } from '../lib/color.js';
 	import { shapeForTool, SHAPE_TOOLS } from '../lib/mask.js';
-	import { exportComposite, downloadBlob, shareBlob, RATIOS } from '../lib/export.js';
+	import { exportComposite, downloadBlob, shareBlob, RATIOS, overlayMinMargin } from '../lib/export.js';
 
 	let {
 		source = null,
@@ -34,6 +34,29 @@
 	let strokes = $state([]);
 	let brushSize = $state(0.08);
 
+	/**
+	 * Whether the brush size slider is being dragged.
+	 *
+	 * Drives the ring on the photo, so the size is shown while it is being chosen
+	 * instead of only under the pointer. Cleared on release, and on a short timer so
+	 * a keyboard user sees it too.
+	 */
+	let brushHint = $state(false);
+	let brushHintTimer = 0;
+
+	function showBrushHint() {
+		brushHint = true;
+		clearTimeout(brushHintTimer);
+		brushHintTimer = setTimeout(() => (brushHint = false), 900);
+	}
+
+	function hideBrushHint() {
+		clearTimeout(brushHintTimer);
+		brushHint = false;
+	}
+
+	$effect(() => () => clearTimeout(brushHintTimer));
+
 	let target = $state({ r: 252, g: 192, b: 0 });
 	let width = $state(30);
 	let feather = $state(40);
@@ -47,6 +70,7 @@
 	let margin = $state(50);
 	let ratio = $state('original');
 	let quality = $state('std');
+	let align = $state('left');
 	let showSwatch = $state(false);
 	let showCode = $state(true);
 	let showMix = $state(false);
@@ -100,6 +124,13 @@
 		['custom', 'out.frame.custom']
 	];
 
+	// Where the swatch / code / mix block sits across the band.
+	const ALIGNS = [
+		['left', 'out.align.left'],
+		['center', 'out.align.center'],
+		['right', 'out.align.right']
+	];
+
 	// Four modes, mirroring the app's mode row plus its output screen.
 	const MODES = [
 		{ id: 'accent', key: 'panel.accent', icon: 'accent' },
@@ -126,6 +157,26 @@
 
 	const palette = $derived(sampler ? sampler.palette : []);
 	const ratioList = $derived([{ id: 'original' }, ...RATIOS.slice(1)]);
+
+	/**
+	 * Lowest margin that still leaves the overlay block legible.
+	 *
+	 * Below this the band would be too short for the code to be readable, so the
+	 * slider starts here rather than offering a range that does nothing. The band
+	 * used to be floored at the block's height instead, which made the whole slider
+	 * inert — the floor was larger than anything the slider could request.
+	 */
+	const minMargin = $derived(
+		frame === 'none' ? 0 : overlayMinMargin({ showSwatch, showCode, showMix })
+	);
+
+	// Keep the band legible when the overlays change under an already-low margin.
+	// Only when there is a frame: without one the margin does nothing, and moving
+	// the slider would look like a glitch.
+	$effect(() => {
+		const floor = minMargin;
+		if (margin < floor) margin = floor;
+	});
 
 	// Tint the page to the sampled color.
 	$effect(() => {
@@ -201,6 +252,7 @@
 		margin = 50;
 		ratio = 'original';
 		quality = 'std';
+		align = 'left';
 		showSwatch = false;
 		showCode = true;
 		showMix = false;
@@ -227,6 +279,7 @@
 			margin,
 			ratio,
 			quality,
+			align,
 			showSwatch,
 			showCode,
 			showMix,
@@ -316,10 +369,17 @@
 			{lasso}
 			{strokes}
 			{brushSize}
+			{brushHint}
 			{t}
 			{frame}
 			{customFrame}
 			marginPct={margin}
+			{ratio}
+			{align}
+			{showSwatch}
+			{showCode}
+			{showMix}
+			mixPalette={palette.slice(0, 6)}
 			{loading}
 			{compare}
 			onpick={pick}
@@ -441,7 +501,11 @@
 									min="2"
 									max="30"
 									value={Math.round(brushSize * 100)}
-									oninput={(e) => (brushSize = Number(e.currentTarget.value) / 100)}
+									oninput={(e) => {
+										brushSize = Number(e.currentTarget.value) / 100;
+										showBrushHint();
+									}}
+									onchange={hideBrushHint}
 								/>
 							</label>
 						{/if}
@@ -499,7 +563,10 @@
 								<span>{t('out.margin')}</span>
 								<span class="mono">{margin}</span>
 							</span>
-							<input type="range" min="0" max="100" bind:value={margin} />
+							<!-- The floor keeps the band tall enough to hold the overlay
+							     block; below it the slider would move and nothing would
+							     change, which reads as a broken control. -->
+							<input type="range" min={minMargin} max="100" bind:value={margin} />
 						</label>
 					{/if}
 
@@ -515,6 +582,17 @@
 							{t('out.comp')}
 						</button>
 					</div>
+
+					{#if showSwatch || showCode || showMix}
+						<p class="panel__label">{t('out.align')}</p>
+						<div class="seg">
+							{#each ALIGNS as [id, key] (id)}
+								<button class="seg__opt" class:is-on={align === id} onclick={() => (align = id)}>
+									{t(key)}
+								</button>
+							{/each}
+						</div>
+					{/if}
 
 					<p class="panel__label">{t('out.ratio')}</p>
 					<div class="ratios">

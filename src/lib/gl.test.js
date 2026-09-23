@@ -14,6 +14,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SHADERS, UNIFORMS } from './shaders.js';
+import { Renderer } from './gl.js';
+import { cropRect } from './export.js';
 
 const DIALECTS = [
 	{
@@ -147,4 +149,147 @@ test('the WebGL2 dialect uses the ES 3.00 forms', () => {
 	assert.match(SHADERS.frag300, /^#version 300 es/);
 	assert.ok(!/gl_FragColor/.test(SHADERS.frag300), 'gl_FragColor is not available in ES 3.00');
 	assert.ok(!/texture2D\s*\(/.test(SHADERS.frag300), 'texture2D is removed in ES 3.00');
+});
+
+// --- uniform values --------------------------------------------------------
+
+/**
+ * A WebGL context that records uniform values and rejects non-finite ones.
+ *
+ * `gl.uniform4f(loc, undefined, ...)` is legal and does not throw: it uploads
+ * NaN, the shader's uv becomes NaN, every texture sample misses, and the photo
+ * renders as one flat colour with nothing logged. That is precisely how the
+ * ratio crop broke — the renderer read `crop.x` while `cropRect` returned
+ * `crop.sx` — so the check belongs here, at the boundary where it went wrong.
+ */
+function fakeGL() {
+	const calls = [];
+	const bad = [];
+	const record = (name, values) => {
+		calls.push([name, ...values]);
+		for (const v of values) {
+			if (typeof v === 'number' && !Number.isFinite(v)) bad.push([name, v]);
+		}
+	};
+	const gl = {
+		VERTEX_SHADER: 1,
+		FRAGMENT_SHADER: 2,
+		ARRAY_BUFFER: 3,
+		STATIC_DRAW: 4,
+		FLOAT: 5,
+		TEXTURE_2D: 6,
+		TEXTURE0: 7,
+		TEXTURE1: 8,
+		RGBA: 9,
+		UNSIGNED_BYTE: 10,
+		TEXTURE_WRAP_S: 11,
+		TEXTURE_WRAP_T: 12,
+		CLAMP_TO_EDGE: 13,
+		TEXTURE_MIN_FILTER: 14,
+		TEXTURE_MAG_FILTER: 15,
+		LINEAR: 16,
+		LINK_STATUS: 17,
+		COMPILE_STATUS: 18,
+		COLOR_BUFFER_BIT: 19,
+		TRIANGLE_STRIP: 20,
+		createShader: () => ({}),
+		shaderSource: () => {},
+		compileShader: () => {},
+		getShaderParameter: () => true,
+		getShaderInfoLog: () => '',
+		deleteShader: () => {},
+		createProgram: () => ({}),
+		attachShader: () => {},
+		bindAttribLocation: () => {},
+		linkProgram: () => {},
+		getProgramParameter: () => true,
+		getProgramInfoLog: () => '',
+		useProgram: () => {},
+		createBuffer: () => ({}),
+		bindBuffer: () => {},
+		bufferData: () => {},
+		getAttribLocation: () => 0,
+		enableVertexAttribArray: () => {},
+		vertexAttribPointer: () => {},
+		getUniformLocation: (_p, n) => ({ name: n }),
+		createTexture: () => ({}),
+		bindTexture: () => {},
+		texParameteri: () => {},
+		uniform1i: (l, v) => record(`uniform1i:${l.name}`, [v]),
+		uniform1f: (l, v) => record(`uniform1f:${l.name}`, [v]),
+		uniform3f: (l, a, b, c) => record(`uniform3f:${l.name}`, [a, b, c]),
+		uniform4f: (l, a, b, c, d) => record(`uniform4f:${l.name}`, [a, b, c, d]),
+		activeTexture: () => {},
+		pixelStorei: () => {},
+		texImage2D: () => {},
+		viewport: () => {},
+		clearColor: () => {},
+		clear: () => {},
+		drawArrays: () => {},
+		deleteTexture: () => {},
+		deleteProgram: () => {}
+	};
+	return { gl, calls, bad };
+}
+
+test('every uniform value handed to GL is a real number', () => {
+	// A field-name mismatch between `cropRect` and the renderer used to upload NaN
+	// and blank the photo. Nothing else in the suite could see it.
+	const { gl, bad } = fakeGL();
+	const canvas = { getContext: (type) => (type === 'webgl2' ? gl : null) };
+
+	const r = new Renderer(canvas);
+	r.setImage({ width: 4, height: 3 });
+	r.setParams({
+		target: { r: 252, g: 192, b: 0 },
+		width: 30,
+		feather: 40,
+		tone: 0,
+		contrast: 0,
+		preset: 0,
+		maskOn: 1,
+		bypass: 0,
+		crop: cropRect(4032, 3024, '1:1')
+	});
+	r.resize(10, 10, 1);
+	r.render();
+
+	assert.deepEqual(bad, [], `non-finite uniform values: ${JSON.stringify(bad)}`);
+});
+
+test('the renderer reads the same crop fields cropRect produces', () => {
+	// The contract, stated directly: whatever cropRect names its fields, the
+	// renderer must read those names. Asserted through the real uniform call.
+	const { gl, calls } = fakeGL();
+	const canvas = { getContext: (type) => (type === 'webgl2' ? gl : null) };
+
+	const r = new Renderer(canvas);
+	r.setImage({ width: 4, height: 3 });
+	const crop = cropRect(4032, 3024, '1:1');
+	r.setParams({ crop });
+	r.resize(10, 10, 1);
+	r.render();
+
+	const call = calls.filter((c) => c[0] === 'uniform4f:uCrop').pop();
+	assert.ok(call, 'uCrop is set');
+	assert.deepEqual(
+		call.slice(1),
+		[crop.sx, crop.sy, crop.sw, crop.sh],
+		'uCrop must receive cropRect\'s own fields'
+	);
+});
+
+test('the default crop is the identity', () => {
+	// Nothing set: the shader must still sample the whole photo rather than NaN.
+	const { gl, calls } = fakeGL();
+	const canvas = { getContext: (type) => (type === 'webgl2' ? gl : null) };
+
+	const r = new Renderer(canvas);
+	r.setImage({ width: 4, height: 3 });
+	r.resize(10, 10, 1);
+	r.render();
+
+	const call = calls.filter((c) => c[0] === 'uniform4f:uCrop').pop();
+	assert.ok(call, 'uCrop is set from the defaults');
+	assert.deepEqual(call.slice(1), [0, 0, 1, 1], 'the identity keeps the whole photo');
 });

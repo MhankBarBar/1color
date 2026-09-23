@@ -35,7 +35,9 @@
 - **Before/after comparison** with a draggable divider
 - **Export** at a chosen aspect ratio and resolution, with an optional frame
   (none, white, black, accent, custom) and margin, and optional swatch, color
-  code, and color-mix overlays
+  code, and color-mix overlays positioned left, center, or right. The Output
+  panel previews on the photo as you change it, so nothing has to be saved to be
+  seen. Ratios crop to the largest centred rect instead of stretching the photo.
 - **Live camera mode** applying the same effect to the video feed, with capture
   straight into the editor
 - **English and Japanese**, English by default
@@ -61,7 +63,7 @@ npm test
 ```
 
 The suite covers the color matcher, export geometry, the mask layer, the shader
-wiring, and the load ordering guard.
+wiring, the stage overlay's CSS contract, and the load ordering guard.
 
 Two invariants are worth knowing about, because they are easy to break:
 

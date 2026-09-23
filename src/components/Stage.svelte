@@ -7,8 +7,8 @@
 	 */
 	import { Renderer } from '../lib/gl.js';
 	import { MaskLayer, shapeHitTest, makeShape, SHAPE_MIN } from '../lib/mask.js';
-	import { rgbToHex } from '../lib/color.js';
-	import { frameHexFor, framePad } from '../lib/export.js';
+	import { rgbToHex, hexToRgb, inkOn } from '../lib/color.js';
+	import { composeGeometry, cropRect, drawOverlayBlock } from '../lib/export.js';
 	import { icon } from '../lib/icons.js';
 
 	let {
@@ -20,6 +20,7 @@
 		lasso = [],
 		strokes = [],
 		brushSize = 0.08,
+		brushHint = false,
 		onpick = () => {},
 		onshape = () => {},
 		onlasso = () => {},
@@ -30,12 +31,20 @@
 		frame = 'none',
 		customFrame = '#F6F6F8',
 		marginPct = 50,
+		ratio = 'original',
+		align = 'left',
 		compare = false,
-		loading = false
+		loading = false,
+		showSwatch = false,
+		showCode = false,
+		showMix = false,
+		mixPalette = null
 	} = $props();
 
 	let canvasEl = $state(null);
 	let boxEl = $state(null);
+	/** Overlay preview canvas, covering the photo box and the frame band. */
+	let composeEl = $state(null);
 	// $state, not a plain binding: every effect below depends on the renderer
 	// existing, and a plain variable would not re-trigger them once it is
 	// assigned. That bug shows up as a permanently blank canvas.
@@ -55,6 +64,9 @@
 	// to the left of the divider. Reusing the GL canvas for it would mean a second
 	// WebGL context and a second render per frame; a snapshot costs one drawImage
 	// per photo and is exactly the original pixels.
+	//
+	// It draws the cropped rect, so the comparison is framed exactly like the
+	// result next to it rather than showing the whole original.
 	$effect(() => {
 		if (!beforeEl || !source) return;
 		const w = Math.round(fit.w);
@@ -66,7 +78,18 @@
 		}
 		const ctx = beforeEl.getContext('2d');
 		ctx.clearRect(0, 0, w, h);
-		ctx.drawImage(source, 0, 0, w, h);
+		const c = crop;
+		ctx.drawImage(
+			source,
+			c.sx * source.width,
+			c.sy * source.height,
+			c.sw * source.width,
+			c.sh * source.height,
+			0,
+			0,
+			w,
+			h
+		);
 	});
 
 	function splitFromEvent(e) {
@@ -74,8 +97,31 @@
 		const r = boxEl.getBoundingClientRect();
 		split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
 	}
-	// Aspect ratio of the loaded photo, in image space.
-	const aspect = $derived(source ? source.width / source.height : 1);
+	// Aspect ratio of the photo as the stage shows it: cropped to the chosen
+	// ratio, so switching ratio reframes the photo on screen exactly as it will be
+	// exported.
+	const crop = $derived(source ? cropRect(source.width, source.height, ratio) : { sx: 0, sy: 0, sw: 1, sh: 1 });
+	const aspect = $derived(
+		source ? (source.width * crop.sw) / (source.height * crop.sh) : 1
+	);
+
+	/**
+	 * Map a point in view space (0..1 across the cropped photo) to full-image
+	 * space (0..1 across the original).
+	 *
+	 * Region geometry is stored in image space, so a region keeps sitting on the
+	 * same part of the photo when the ratio changes. Only this mapping moves, which
+	 * is what makes the crop reversible in the UI.
+	 */
+	const viewToImage = (p) => ({
+		x: crop.sx + p.x * crop.sw,
+		y: crop.sy + p.y * crop.sh
+	});
+
+	const imageToView = (p) => ({
+		x: (p.x - crop.sx) / crop.sw,
+		y: (p.y - crop.sy) / crop.sh
+	});
 
 	$effect(() => {
 		if (!canvasEl) return;
@@ -161,7 +207,7 @@
 			r.setMask(mask.canvas);
 		}
 
-		r.setParams(params);
+		r.setParams({ ...params, crop });
 		r.render();
 	}
 
@@ -238,13 +284,15 @@
 
 	// --- pointer handling --------------------------------------------------
 
-	/** Map a pointer event to normalised image coordinates. */
+	/** Map a pointer event to normalised photo coordinates (full image space). */
 	function toImage(e) {
 		const r = boxEl.getBoundingClientRect();
-		return {
+		// Through the crop: the stage shows the cropped rect, and region geometry
+		// lives in full-image coordinates.
+		return viewToImage({
 			x: (e.clientX - r.left) / r.width,
 			y: (e.clientY - r.top) / r.height
-		};
+		});
 	}
 
 	let drag = $state(null);
@@ -259,13 +307,39 @@
 	let pointer = $state(null);
 	let loupeEl = $state(null);
 
-	/** Brush diameter in stage pixels, matching how the mask draws it. */
-	const brushRingPx = $derived(Math.max(6, brushSize * Math.max(px.w, px.h)));
+	/** `pointer`, expressed in view space, for anything positioned with CSS. */
+	const pointerView = $derived(pointer ? imageToView(pointer) : null);
+
+	/**
+	 * Brush diameter in stage pixels, matching how the mask draws it.
+	 *
+	 * The mask is built at the full image's resolution, so a stroke keeps the same
+	 * size relative to the photo when a ratio crops it. The ring must convert back
+	 * through the crop, or it would show the wrong size as soon as a ratio is
+	 * picked — and the ring exists precisely to say how big the stroke will be.
+	 */
+	const brushRingPx = $derived(
+		Math.max(
+			6,
+			brushSize * Math.max(px.w / crop.sw, px.h / crop.sh)
+		)
+	);
 
 	/** A brush that can be sized is only useful once a region is being painted. */
-	const showBrushRing = $derived(
-		pointer !== null && shapeKind === 'brush' && scope === 'part'
-	);
+	const brushActive = $derived(shapeKind === 'brush' && scope === 'part');
+
+	/** Where the brush ring sits: under the pointer, or the photo's centre when the
+	 *  size slider is being dragged and there is no pointer to follow. */
+	const brushAt = $derived(pointerView ?? { x: 0.5, y: 0.5 });
+
+	/**
+	 * Shown while hovering to paint, and while the size slider is being dragged.
+	 *
+	 * The slider case matters: without it the ring only appeared under the pointer,
+	 * so dragging the size control changed a number with nothing on the photo to
+	 * show what it meant.
+	 */
+	const showBrushRing = $derived(brushActive && (pointer !== null || brushHint));
 
 	/**
 	 * Which side of the pointer the magnifier sits on.
@@ -273,7 +347,7 @@
 	 * The framed box clips its overflow, so above-the-pointer would be cut off near
 	 * the top edge. Flipping below keeps it whole wherever you touch.
 	 */
-	const loupeBelow = $derived((pointer?.y ?? 0) < 0.42);
+	const loupeBelow = $derived((pointerView?.y ?? 0) < 0.42);
 
 	/** While sampling or painting, show what sits under the pointer, magnified. */
 	const showLoupe = $derived(
@@ -445,10 +519,20 @@
 	// preserveAspectRatio="none", so a stroke-width of 0.02 scaled differently
 	// on x and y — brush strokes came out elliptical instead of round. Emitting
 	// pixel coordinates with a 1:1 viewBox makes stroke widths uniform.
+	//
+	// Region geometry lives in image space while this SVG is in view space, so
+	// every point goes through the crop mapping. Without that, cropping a ratio
+	// would slide the region off the pixels it was drawn over.
 	const px = $derived({
 		w: fit.w || 1,
 		h: fit.h || 1
 	});
+
+	/** View-space pixels for a point stored in image space. */
+	const toPx = (p) => {
+		const v = imageToView(p);
+		return { x: v.x * px.w, y: v.y * px.h };
+	};
 
 	const overlay = $derived.by(() => {
 		// Only circle and rect have geometry to draw. A stale kind here would be
@@ -457,8 +541,7 @@
 		if (!shape || (shape.kind !== 'rect' && shape.kind !== 'circle')) return null;
 		const W = px.w;
 		const H = px.h;
-		const cx = shape.cx * W;
-		const cy = shape.cy * H;
+		const c = toPx({ x: shape.cx, y: shape.cy });
 		const hw = (shape.w * W) / 2;
 		const hh = (shape.h * H) / 2;
 		const rad = (shape.rot || 0) * (180 / Math.PI);
@@ -469,50 +552,106 @@
 			[hw, -hh],
 			[-hw, hh],
 			[hw, hh]
-		].map(([lx, ly]) => ({ x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos }));
+		].map(([lx, ly]) => ({ x: c.x + lx * cos - ly * sin, y: c.y + lx * sin + ly * cos }));
 		const rotate = {
-			x: cx + Math.sin(shape.rot || 0) * (-hh - 26),
-			y: cy + Math.cos(shape.rot || 0) * (hh + 26)
+			x: c.x + Math.sin(shape.rot || 0) * (-hh - 26),
+			y: c.y + Math.cos(shape.rot || 0) * (hh + 26)
 		};
-		const anchor = { x: cx + Math.sin(shape.rot || 0) * -hh, y: cy + Math.cos(shape.rot || 0) * hh };
-		return { rad, corners, rotate, anchor, cx, cy, hw, hh };
+		const anchor = {
+			x: c.x + Math.sin(shape.rot || 0) * -hh,
+			y: c.y + Math.cos(shape.rot || 0) * hh
+		};
+		return { rad, corners, rotate, anchor, cx: c.x, cy: c.y, hw, hh };
 	});
 
 	const lassoPath = $derived(
 		lasso.length > 1
-			? lasso.map((p, i) => `${i ? 'L' : 'M'}${p.x * px.w} ${p.y * px.h}`).join(' ') + ' Z'
+			? lasso
+					.map((p, i) => {
+						const v = toPx(p);
+						return `${i ? 'L' : 'M'}${v.x} ${v.y}`;
+					})
+					.join(' ') + ' Z'
 			: ''
-	);
-
-	// Brush strokes: emitted in pixel space with a round cap and a uniform width,
-	// which is what makes a paint stroke look like paint.
-	const strokePaths = $derived(
-		strokes.map((s) => ({
-			d: s.pts
-				.map((p, i) => `${i ? 'L' : 'M'}${(p.x * px.w).toFixed(1)} ${(p.y * px.h).toFixed(1)}`)
-				.join(' '),
-			w: Math.max(1, s.size * Math.max(px.w, px.h))
-		}))
 	);
 
 	const cursor = $derived(
 		scope === 'all' || shapeKind === 'brush' || shapeKind === 'lasso' ? 'crosshair' : 'default'
 	);
 
-	// Frame preview. Mirrors the export math exactly — same helper, same padding
-	// formula — so the framed preview matches the file you get.
-	const framed = $derived.by(() => {
-		const w = source?.width || 1;
-		const h = source?.height || 1;
-		const fh = frameHexFor(frame, rgbToHex(params.target), customFrame);
-		const pad = fh ? framePad(marginPct) * Math.min(w, h) : 0;
-		const outW = w + pad * 2;
-		const outH = h + pad * 2;
-		// Padding as a fraction of the framed width; scaled to pixels after the
-		// letterbox fit, because CSS percentage padding resolves against the
-		// containing block's width and would not match this box.
-		return { hex: fh, aspect: outW / outH, padFrac: pad / outW };
+	/**
+	 * Paint the overlay preview.
+	 *
+	 * Uses the export's own painter at the export's own geometry, so the block can
+	 * only look like the saved file. The canvas is stretched over the frame's
+	 * padding box, which is the full composition, so its measured box is already in
+	 * composition units — the context just scales them to device pixels and the
+	 * export's numbers go in unchanged.
+	 */
+	$effect(() => {
+		if (!composeEl) return;
+		// `clientWidth` is not reactive; read the fit so a resize repaints.
+		void fit.w;
+		void fit.h;
+		const cssW = composeEl.clientWidth;
+		const cssH = composeEl.clientHeight;
+		if (!cssW || !cssH) return;
+
+		const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
+		const bw = Math.round(cssW * dpr);
+		const bh = Math.round(cssH * dpr);
+		if (composeEl.width !== bw || composeEl.height !== bh) {
+			composeEl.width = bw;
+			composeEl.height = bh;
+		}
+
+		const ctx = composeEl.getContext('2d');
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.clearRect(0, 0, bw, bh);
+
+		// Output units -> device pixels.
+		ctx.scale(bw / framed.outW, bh / framed.outH);
+		drawOverlayBlock(ctx, {
+			innerW: framed.innerW,
+			innerH: framed.innerH,
+			pad: framed.pad,
+			width: framed.outW,
+			height: framed.outH,
+			hasFrame: !!framed.hex,
+			hex: rgbToHex(params.target),
+			ink: framed.hex ? inkOn(hexToRgb(framed.hex)) : undefined,
+			align,
+			showSwatch,
+			showCode,
+			showMix,
+			palette: mixPalette
+		});
 	});
+
+	/** Whether the overlay preview has anything to draw. */
+	const hasOverlays = $derived(showSwatch || showCode || showMix);
+
+	// Frame preview. The geometry comes from the export's own `composeGeometry`,
+	// so the band the preview draws into is by construction the band the export
+	// writes into. Deriving it here by hand is what let the two drift.
+	//
+	// The size passed in is the *cropped* photo, matching what `outputSize` returns
+	// for the export — otherwise the preview and the file would disagree the moment
+	// a ratio was chosen.
+	const framed = $derived.by(() =>
+		composeGeometry({
+			imgW: Math.max(2, Math.round((source?.width || 1) * crop.sw)),
+			imgH: Math.max(2, Math.round((source?.height || 1) * crop.sh)),
+			frame,
+			accentHex: rgbToHex(params.target),
+			customHex: customFrame,
+			margin: marginPct,
+			align,
+			showSwatch,
+			showCode,
+			showMix
+		})
+	);
 </script>
 
 <div class="stage" bind:this={hostEl}>
@@ -600,39 +739,64 @@
 					</div>
 				{/if}
 
-			{#if showBrushRing && pointer}
-				<!-- The brush's true size, shown before you commit to a stroke. -->
-				<span
-					class="stage__brush"
-					style:left={`${pointer.x * 100}%`}
-					style:top={`${pointer.y * 100}%`}
-					style:width={`${brushRingPx}px`}
-					style:height={`${brushRingPx}px`}
-					aria-hidden="true"
-				></span>
-			{/if}
+				{#if hasOverlays}
+					<!--
+						The swatch / code / mix block, painted exactly as the export paints
+						it.
 
-			{#if showLoupe && pointer}
-				<!-- Magnifier: nearest-neighbour, so the colour you read is the colour
-				     actually under the pointer. -->
-				<span
-					class="stage__loupe"
-					class:is-below={loupeBelow}
-					style:left={`${Math.min(0.9, Math.max(0.1, pointer.x)) * 100}%`}
-					style:top={`${pointer.y * 100}%`}
-					aria-hidden="true"
-				>
-					<canvas class="stage__loupe-view" bind:this={loupeEl} width="132" height="132"
+						It sits after the photo so it draws above it, and before the brush
+						ring, magnifier, and region handles so those stay on top and
+						grabbable — this previews the output, the editing chrome belongs
+						over it.
+
+						The photo box is not the composition, though: the block belongs in
+						the frame band around the photo. The negative inset stretches this
+						canvas out to the frame's padding box, which is exactly the
+						composition, so `inset: 0` inside it lands where the export puts it.
+					-->
+					<canvas
+						class="stage__compose"
+						bind:this={composeEl}
+						style:inset={`-${Math.round(fit.w * framed.padFrac)}px`}
+						style:width={`${fit.w}px`}
+						style:height={`${fit.h}px`}
+						aria-hidden="true"
 					></canvas>
-					<span class="stage__loupe-reticle"></span>
-				</span>
-			{/if}
+				{/if}
 
-			{#if glError}
-				<p class="stage__error" role="alert">
-					{glError === 'nogl' ? t('stage.nogl') : glError}
-				</p>
-			{/if}
+				{#if showBrushRing}
+					<!-- The brush's true size, shown before you commit to a stroke. -->
+					<span
+						class="stage__brush"
+						style:left={`${brushAt.x * 100}%`}
+						style:top={`${brushAt.y * 100}%`}
+						style:width={`${brushRingPx}px`}
+						style:height={`${brushRingPx}px`}
+						aria-hidden="true"
+					></span>
+				{/if}
+
+				{#if showLoupe && pointerView}
+					<!-- Magnifier: nearest-neighbour, so the colour you read is the colour
+					     actually under the pointer. -->
+					<span
+						class="stage__loupe"
+						class:is-below={loupeBelow}
+						style:left={`${Math.min(0.9, Math.max(0.1, pointerView.x)) * 100}%`}
+						style:top={`${pointerView.y * 100}%`}
+						aria-hidden="true"
+					>
+						<canvas class="stage__loupe-view" bind:this={loupeEl} width="132" height="132"
+						></canvas>
+						<span class="stage__loupe-reticle"></span>
+					</span>
+				{/if}
+
+				{#if glError}
+					<p class="stage__error" role="alert">
+						{glError === 'nogl' ? t('stage.nogl') : glError}
+					</p>
+				{/if}
 
 				<svg
 					class="stage__overlay"
@@ -640,20 +804,8 @@
 					preserveAspectRatio="none"
 				>
 					{#if scope === 'part'}
-						{#if strokePaths.length}
-							{#each strokePaths as s, i (i)}
-								<path
-									class="stage__path"
-									d={s.d}
-									stroke-width={s.w}
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									fill="none"
-								/>
-							{/each}
-						{/if}
 						{#if lassoPath}
-							<path class="stage__path" d={lassoPath} />
+							<path class="stage__lasso" d={lassoPath} />
 						{/if}
 						{#if shape && overlay && (shape.kind === 'rect' || shape.kind === 'circle')}
 							<g>
@@ -759,6 +911,22 @@
 		width: 100%;
 		height: 100%;
 		overflow: visible;
+		pointer-events: none;
+	}
+
+	/* Overlay preview: the swatch / code / mix block, at export geometry. Position
+	   and size are set inline, from the same fit the frame uses, so it spans the
+	   frame's padding box — the photo plus the band — rather than just the photo.
+	   Pointer events stay off so the photo underneath still picks colors.
+
+	   `max-width` has to be cancelled here. `app.css` clamps every canvas to 100%
+	   of its containing block, which is the photo box, but this canvas is
+	   deliberately wider than that: it also covers the frame band. Left clamped it
+	   lost one band width on each side, so the overlay block slid off the frame and
+	   onto the image. */
+	.stage__compose {
+		position: absolute;
+		max-width: none;
 		pointer-events: none;
 	}
 
