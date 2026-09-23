@@ -16,6 +16,11 @@ A selective-color editor that runs entirely in the browser. No account, no
 upload, no backend: the photo is processed on your GPU and never leaves the
 device.
 
+<p align="center">
+  <img src="docs/showcase-editor.png" width="49%" alt="The editor: a red-and-white flower photo with everything but the red desaturated, the tool panel open on Color, and a row of recent color swatches.">
+  <img src="docs/showcase-compare.png" width="49%" alt="The before/after divider dragged across the same photo, showing the original in color on the left and the selective-color result on the right.">
+</p>
+
 ## Features
 
 - **Pick by tapping or dragging** across the photo, with a magnifier showing the
@@ -121,6 +126,7 @@ Sample photos, all from Wikimedia Commons:
 - Sunflowers — Bruce Fritz, USDA. Public domain.
 - Blue Door, White Wall — Klearchos Kapoutsis. CC BY 2.0.
 - Red lanterns, Taiwan Lantern Festival — Pascal Terjan. CC BY-SA 2.0.
+
 
 Display type is Bricolage Grotesque and body text is Instrument Sans, both from
 Google Fonts. If that host is unreachable, the app falls back to Hiragino Sans,
