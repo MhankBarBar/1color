@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Credentials: never commit these ---------------------------------------
+# Cloudflare (wrangler) keeps account ids, an OAuth token cache and any local
+# state under .wrangler/. It is created by the first `wrangler` command.
+.wrangler
+
+# Environment files. .env.example is the documented template and IS tracked;
+# every other variant may hold real values.
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- Editor / OS -----------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.local
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

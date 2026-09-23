@@ -1,0 +1,1346 @@
+/* ==========================================================================
+   Accent — web companion
+   Visual language lifted from the iOS app: near-black chrome, dark rounded
+   cards, white-filled selection pills, one warm gold accent.
+
+   The one deliberate departure: --accent is *live*. Sampling a color on the
+   photo re-tints the interface to that color. The app is named for it.
+   ========================================================================== */
+
+/* --- tokens -------------------------------------------------------------- */
+
+:root {
+	/* Surfaces, sampled from the app's own screenshots (rgb 9,9,10 etc). */
+	--ink-000: #09090a;
+	--ink-050: #101012;
+	--ink-100: #17171a;
+	--ink-200: #1f1f23;
+	--ink-300: #2a2a30;
+	--ink-400: #3a3a42;
+
+	--text: #f6f6f8;
+	--text-dim: #a3a3ac;
+	--text-faint: #6d6d76;
+
+	/* The live accent. JS overwrites --accent / --accent-ink on :root. */
+	--accent: #fcc000;
+	--accent-ink: #09090a;
+	--accent-glow: rgb(252 192 0 / 0.16);
+
+	--radius-card: 24px;
+	--radius-panel: 18px;
+	--radius-ctl: 12px;
+	--radius-pill: 999px;
+
+	--pad: 20px;
+	--gap: 14px;
+
+	--font-display: 'Bricolage Grotesque', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+	--font-body: 'Instrument Sans', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+	--font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+	--shadow-lift: 0 24px 60px -24px rgb(0 0 0 / 0.9);
+	--ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+	color-scheme: dark;
+}
+
+/* --- reset --------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--ink-000);
+	color: var(--text);
+	font-family: var(--font-body);
+	font-size: 16px;
+	line-height: 1.55;
+	-webkit-font-smoothing: antialiased;
+	overflow-x: hidden;
+}
+
+/* Mobile browsers flash a grey rounded box over whatever you tap. It is
+   browser chrome, not part of this design, and it looks especially wrong on the
+   circular buttons and swatches. Our own :active and .is-on states carry the
+   feedback instead. */
+* {
+	-webkit-tap-highlight-color: transparent;
+}
+
+/* Buttons should not be text-selectable or long-press-menu targets; the editor
+   is a direct-manipulation surface. Inputs keep normal behaviour. */
+button,
+[role='slider'],
+.stage {
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+h1,
+h2,
+h3,
+p,
+figure {
+	margin: 0;
+}
+
+button {
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+
+img,
+canvas,
+svg {
+	display: block;
+	max-width: 100%;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+	border-radius: 6px;
+}
+
+::selection {
+	background: var(--accent);
+	color: var(--accent-ink);
+}
+
+/* --- layout -------------------------------------------------------------- */
+
+.shell {
+	width: min(1320px, 100% - 40px);
+	margin-inline: auto;
+}
+
+/* --- type ---------------------------------------------------------------- */
+
+.display {
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: clamp(2.6rem, 6.4vw, 5.1rem);
+	line-height: 0.98;
+	letter-spacing: -0.035em;
+	text-wrap: balance;
+}
+
+.display .tint {
+	color: var(--accent);
+	transition: color 0.35s var(--ease);
+}
+
+.section-title {
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: clamp(1.9rem, 3.6vw, 3rem);
+	line-height: 1.05;
+	letter-spacing: -0.03em;
+}
+
+.lede {
+	color: var(--text-dim);
+	font-size: clamp(1rem, 1.4vw, 1.125rem);
+	max-width: 46ch;
+}
+
+.eyebrow {
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--text-faint);
+}
+
+.mono {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+}
+
+/* --- nav ----------------------------------------------------------------- */
+
+.nav {
+	position: sticky;
+	top: 0;
+	z-index: 40;
+	backdrop-filter: blur(18px) saturate(140%);
+	background: rgb(9 9 10 / 0.72);
+	border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.nav__inner {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	height: 62px;
+}
+
+.brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-family: var(--font-display);
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	font-size: 1.05rem;
+}
+
+.brand__dot {
+	width: 15px;
+	height: 15px;
+	border-radius: 50%;
+	background: var(--accent);
+	transition: background 0.35s var(--ease);
+}
+
+.nav__links {
+	display: flex;
+	gap: 4px;
+	margin-left: auto;
+}
+
+.nav__link {
+	padding: 7px 13px;
+	border-radius: var(--radius-pill);
+	color: var(--text-dim);
+	font-size: 0.88rem;
+	transition: color 0.2s, background 0.2s;
+}
+
+.nav__link:hover {
+	color: var(--text);
+	background: rgb(255 255 255 / 0.06);
+}
+
+.nav__link.is-current {
+	color: var(--text);
+	background: rgb(255 255 255 / 0.1);
+}
+
+.lang {
+	display: flex;
+	gap: 2px;
+	padding: 3px;
+	border-radius: var(--radius-pill);
+	background: var(--ink-200);
+}
+
+.lang__opt {
+	padding: 5px 11px;
+	border-radius: var(--radius-pill);
+	font-size: 0.78rem;
+	color: var(--text-dim);
+	transition: color 0.2s, background 0.2s;
+}
+
+.lang__opt.is-on {
+	background: var(--text);
+	color: var(--ink-000);
+	font-weight: 600;
+}
+
+/* --- hero ---------------------------------------------------------------- */
+
+.hero {
+	position: relative;
+	padding: clamp(40px, 6vw, 76px) 0 clamp(40px, 5vw, 64px);
+	overflow: hidden;
+}
+
+/* Ambient wash that carries the live accent. The signature, kept quiet. */
+.hero::before {
+	content: '';
+	position: absolute;
+	inset: -30% -10% auto -10%;
+	height: 120%;
+	background: radial-gradient(
+		58% 46% at 18% 12%,
+		var(--accent-glow) 0%,
+		transparent 62%
+	);
+	pointer-events: none;
+	transition: background 0.5s var(--ease);
+}
+
+/* Copy sits above the editor, which then gets the full shell width — the photo
+   is the point of the page, so it does not share a row with the tool panels. */
+.hero__grid {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: clamp(30px, 4vw, 46px);
+}
+
+.hero__copy {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.hero__copy .display {
+	max-width: 17ch;
+}
+
+.hero__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-top: 4px;
+}
+
+.hero__hint {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--text-faint);
+	font-size: 0.84rem;
+}
+
+.hero__hint svg {
+	flex: none;
+	opacity: 0.8;
+}
+
+/* --- buttons ------------------------------------------------------------- */
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 12px 20px;
+	border-radius: var(--radius-pill);
+	font-size: 0.92rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	transition: transform 0.18s var(--ease), background 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.btn:active {
+	transform: scale(0.975);
+}
+
+.btn--primary {
+	background: var(--accent);
+	color: var(--accent-ink);
+	transition: background 0.35s var(--ease), color 0.35s var(--ease), transform 0.18s var(--ease);
+}
+
+.btn--primary:hover {
+	filter: brightness(1.08);
+}
+
+.btn--ghost {
+	background: var(--ink-200);
+	color: var(--text);
+}
+
+.btn--ghost:hover {
+	background: var(--ink-300);
+}
+
+.btn--quiet {
+	color: var(--text-dim);
+	padding: 10px 14px;
+}
+
+.btn--quiet:hover {
+	color: var(--text);
+	background: rgb(255 255 255 / 0.06);
+}
+
+.btn[disabled] {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+/* --- the editor card ----------------------------------------------------- */
+
+.editor {
+	position: relative;
+	background: var(--ink-100);
+	border: 1px solid rgb(255 255 255 / 0.07);
+	border-radius: var(--radius-card);
+	box-shadow: var(--shadow-lift);
+	overflow: hidden;
+}
+
+.editor__bar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.editor__swatch {
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	background: var(--accent);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+	transition: background 0.35s var(--ease);
+	flex: none;
+}
+
+.editor__hex {
+	font-family: var(--font-mono);
+	font-size: 0.82rem;
+	letter-spacing: 0.02em;
+	color: var(--text);
+}
+
+.editor__coverage {
+	font-family: var(--font-mono);
+	font-size: 0.74rem;
+	color: var(--text-faint);
+}
+
+/* Photo first, controls under it — the app's own proportions. The stage is
+   capped so the panel and mode row stay on screen without scrolling. */
+.editor__stage {
+	position: relative;
+	background: #000;
+	padding: 12px;
+}
+
+/* --- stage --------------------------------------------------------------- */
+
+.stage {
+	position: relative;
+	width: 100%;
+	max-width: 100%;
+	touch-action: none;
+	user-select: none;
+	line-height: 0;
+}
+
+.stage__canvas {
+	width: 100%;
+	height: 100%;
+	border-radius: 10px;
+}
+
+.stage__overlay {
+	position: absolute;
+	inset: 0;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.stage__shape {
+	fill: rgb(255 255 255 / 0.1);
+	stroke: var(--text);
+	stroke-width: 1.5;
+	vector-effect: non-scaling-stroke;
+}
+
+.stage__path {
+	fill: rgb(255 255 255 / 0.14);
+	stroke: var(--text);
+	stroke-width: 1.5;
+	vector-effect: non-scaling-stroke;
+}
+
+.stage__handle {
+	fill: var(--text);
+	stroke: rgb(0 0 0 / 0.45);
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+	pointer-events: auto;
+	cursor: grab;
+}
+
+.stage__rotate {
+	fill: var(--accent);
+	stroke: rgb(0 0 0 / 0.5);
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+	pointer-events: auto;
+	cursor: grab;
+}
+
+.stage__link {
+	stroke: var(--text);
+	stroke-width: 1.5;
+	vector-effect: non-scaling-stroke;
+	stroke-dasharray: 3 3;
+}
+
+/* Empty state inside the stage */
+.dropzone {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	padding: 40px 24px;
+	text-align: center;
+	border: 1px dashed rgb(255 255 255 / 0.16);
+	border-radius: var(--radius-panel);
+	width: 100%;
+}
+
+.dropzone.is-over {
+	border-color: var(--accent);
+	background: var(--accent-glow);
+}
+
+.dropzone__text {
+	color: var(--text-dim);
+	font-size: 0.9rem;
+	line-height: 1.5;
+	max-width: 34ch;
+}
+
+.samples {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	justify-content: center;
+}
+
+.samples__btn {
+	width: 62px;
+	height: 62px;
+	border-radius: 12px;
+	overflow: hidden;
+	background: var(--ink-300);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+	transition: transform 0.18s var(--ease), box-shadow 0.2s;
+}
+
+.samples__btn:hover {
+	transform: translateY(-2px);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3);
+}
+
+.samples__btn img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+/* Large tap target for starting from a sample, used in the compare grid. */
+.sample-tile {
+	width: 100%;
+	aspect-ratio: 3 / 4;
+	border-radius: var(--radius-panel);
+	overflow: hidden;
+	background: var(--ink-100);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+	transition: box-shadow 0.2s;
+}
+
+.sample-tile:hover {
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
+}
+
+.sample-tile img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+/* --- panel controls ------------------------------------------------------ */
+
+/* One panel under the photo, showing only the active mode. */
+.panel {
+	background: var(--ink-050);
+	border-top: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.panel__head {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	width: 100%;
+	padding: 11px 14px;
+	text-align: left;
+}
+
+.panel__title {
+	font-size: 0.86rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.panel__icon {
+	width: 17px;
+	height: 17px;
+	flex: none;
+	color: var(--accent);
+	transition: color 0.35s var(--ease);
+}
+
+.panel__chevron {
+	margin-left: auto;
+	color: var(--text-faint);
+}
+
+.panel__body {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding: 0 14px 16px;
+	/* Bounded so switching mode does not resize the card by a large margin.
+	   The switcher sits above this, so it never moves; this only stops the card
+	   from visibly collapsing when you switch from a tall mode to a short one.
+	   Output mode is taller than this and simply grows past it. */
+	min-height: 172px;
+}
+
+/* Section label inside a panel, e.g. "Colors in this photo". */
+.panel__label {
+	font-size: 0.72rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-faint);
+}
+
+/* Slider with its label and value on one row above the track. */
+.slider {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.slider__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	font-size: 0.8rem;
+	color: var(--text-dim);
+}
+
+.slider__row .mono {
+	font-size: 0.78rem;
+	color: var(--text);
+}
+
+.slider input[type='range'] {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 100%;
+	height: 26px;
+	background: none;
+	accent-color: var(--accent);
+	cursor: pointer;
+}
+
+.slider input[type='range']::-webkit-slider-runnable-track {
+	height: 4px;
+	border-radius: 999px;
+	background: var(--ink-400);
+}
+
+.slider input[type='range']::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 18px;
+	height: 18px;
+	margin-top: -7px;
+	border-radius: 50%;
+	background: var(--text);
+	box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+}
+
+.slider input[type='range']::-moz-range-track {
+	height: 4px;
+	border-radius: 999px;
+	background: var(--ink-400);
+}
+
+.slider input[type='range']::-moz-range-progress {
+	height: 4px;
+	border-radius: 999px;
+	background: var(--accent);
+}
+
+.slider input[type='range']::-moz-range-thumb {
+	width: 18px;
+	height: 18px;
+	border: 0;
+	border-radius: 50%;
+	background: var(--text);
+}
+
+/* Segmented selector. Uses a rounded-rect radius rather than a full pill: these
+   wrap to two rows when the options outnumber the width (the frame row does),
+   and a pill outline around two rows reads as broken. */
+.seg {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 3px;
+	padding: 3px;
+	border-radius: 14px;
+	background: var(--ink-200);
+}
+
+.seg__opt {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 8px 8px;
+	border-radius: 11px;
+	font-size: 0.78rem;
+	color: var(--text-dim);
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition: background 0.2s, color 0.2s;
+}
+
+.seg__opt:hover {
+	color: var(--text);
+}
+
+.seg__opt.is-on {
+	background: var(--text);
+	color: var(--ink-000);
+	font-weight: 600;
+}
+
+/* Mode switcher — circular icon buttons with labels, as in the app. This is the
+   editor's primary navigation, so the discs are large and tappable. */
+.modes {
+	display: flex;
+	gap: 4px;
+	padding: 10px 8px;
+	border-top: 1px solid rgb(255 255 255 / 0.06);
+	background: var(--ink-100);
+}
+
+.mode {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 0;
+	color: var(--text-dim);
+	font-size: 0.68rem;
+	letter-spacing: 0.01em;
+	border-radius: var(--radius-ctl);
+}
+
+.mode__disc {
+	width: 46px;
+	height: 46px;
+	border-radius: 50%;
+	background: var(--ink-200);
+	display: grid;
+	place-items: center;
+	color: var(--text-dim);
+	transition: background 0.25s var(--ease), color 0.25s;
+}
+
+.mode__disc svg {
+	width: 21px;
+	height: 21px;
+}
+
+.mode:hover .mode__disc {
+	background: var(--ink-300);
+	color: var(--text);
+}
+
+.mode.is-on {
+	color: var(--text);
+}
+
+.mode.is-on .mode__disc {
+	background: var(--text);
+	color: var(--ink-000);
+}
+
+/* Shape picker — same idiom as the mode row, one step smaller. */
+.shapes {
+	display: flex;
+	gap: 4px;
+}
+
+.shape {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 0;
+	color: var(--text-dim);
+	font-size: 0.68rem;
+}
+
+.shape__disc {
+	width: 38px;
+	height: 38px;
+	border-radius: 50%;
+	background: var(--ink-200);
+	display: grid;
+	place-items: center;
+	transition: background 0.25s var(--ease), color 0.25s;
+}
+
+.shape__disc svg {
+	width: 17px;
+	height: 17px;
+}
+
+.shape.is-on {
+	color: var(--text);
+}
+
+.shape.is-on .shape__disc {
+	background: var(--text);
+	color: var(--ink-000);
+}
+
+/* Swatch row */
+.swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 7px;
+}
+
+.swatch {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+	transition: transform 0.16s var(--ease), box-shadow 0.2s;
+}
+
+.swatch:hover {
+	transform: scale(1.12);
+}
+
+.swatch.is-on {
+	box-shadow:
+		0 0 0 2px var(--ink-050),
+		0 0 0 4px var(--text);
+}
+
+/* Ratio grid */
+.ratios {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 5px;
+}
+
+.ratio {
+	padding: 9px 4px;
+	border-radius: var(--radius-ctl);
+	background: var(--ink-200);
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	color: var(--text-dim);
+	transition: background 0.2s, color 0.2s;
+}
+
+.ratio:hover {
+	color: var(--text);
+}
+
+.ratio.is-on {
+	background: var(--text);
+	color: var(--ink-000);
+	font-weight: 600;
+}
+
+/* Overlay toggles as chips — a toggle row per item was three rows of chrome for
+   three booleans. */
+.chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.chip {
+	padding: 8px 14px;
+	border-radius: var(--radius-pill);
+	background: var(--ink-200);
+	color: var(--text-dim);
+	font-size: 0.78rem;
+	transition: background 0.2s, color 0.2s;
+}
+
+.chip:hover {
+	color: var(--text);
+}
+
+.chip.is-on {
+	background: var(--accent);
+	color: var(--accent-ink);
+	font-weight: 600;
+}
+
+/* --- tooltips, toasts, alerts -------------------------------------------- */
+
+/* Custom tooltip. Native `title` is OS chrome: it ignores the theme entirely and
+   takes about a second to appear, so it never matched this interface. */
+.tip {
+	position: relative;
+}
+
+.tip::after {
+	content: attr(data-tip);
+	position: absolute;
+	top: calc(100% + 8px);
+	left: 50%;
+	transform: translateX(-50%) translateY(-4px);
+	padding: 6px 10px;
+	border-radius: 9px;
+	background: var(--ink-300);
+	color: var(--text);
+	font-family: var(--font-body);
+	font-size: 0.72rem;
+	font-weight: 500;
+	letter-spacing: 0;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.14s var(--ease), transform 0.14s var(--ease);
+	box-shadow: 0 6px 20px -6px rgb(0 0 0 / 0.8);
+	z-index: 30;
+}
+
+.tip:hover::after,
+.tip:focus-visible::after {
+	opacity: 1;
+	transform: translateX(-50%) translateY(0);
+}
+
+/* Tooltips on controls that sit at the right edge should not overflow it. */
+.tip--end::after {
+	left: auto;
+	right: 0;
+	transform: translateY(-4px);
+}
+
+.tip--end:hover::after,
+.tip--end:focus-visible::after {
+	transform: translateY(0);
+}
+
+/* Transient confirmation, e.g. "Saved". */
+.toast {
+	position: fixed;
+	left: 50%;
+	bottom: 24px;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 11px 18px;
+	border-radius: var(--radius-pill);
+	background: var(--ink-300);
+	color: var(--text);
+	font-size: 0.84rem;
+	box-shadow: 0 12px 32px -10px rgb(0 0 0 / 0.85);
+	z-index: 60;
+}
+
+/* Inline notice / error. Sentence case, no apology, says what to do next. */
+.notice {
+	display: flex;
+	align-items: flex-start;
+	gap: 9px;
+	padding: 11px 13px;
+	border-radius: var(--radius-ctl);
+	background: var(--ink-200);
+	color: var(--text-dim);
+	font-size: 0.82rem;
+	line-height: 1.5;
+	max-width: 46ch;
+}
+
+.notice svg {
+	flex: none;
+	margin-top: 2px;
+	color: var(--accent);
+}
+
+/* --- sections ------------------------------------------------------------ */
+
+.band {
+	padding: clamp(56px, 8vw, 108px) 0;
+	border-top: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.band__head {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	margin-bottom: clamp(28px, 4vw, 48px);
+	max-width: 62ch;
+}
+
+/* The tile takes the photo's own aspect ratio (set inline), and the grid columns
+   set the width — so the canvas box always matches the photo exactly. No height
+   clamp: clamping would break that match and reintroduce the stretch this is
+   here to prevent. The strip aligns to the top so differing heights line up. */
+.compare {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 16px;
+	align-items: start;
+}
+
+.compare__item {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.compare__figure {
+	position: relative;
+	width: 100%;
+	border-radius: var(--radius-panel);
+	overflow: hidden;
+	background: var(--ink-100);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+}
+
+.compare__figure canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.compare__meta {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+}
+
+.compare__chip {
+	width: 13px;
+	height: 13px;
+	border-radius: 50%;
+	flex: none;
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+}
+
+.compare__label {
+	font-size: 0.84rem;
+	color: var(--text-dim);
+}
+
+.compare__hex {
+	margin-left: auto;
+	font-family: var(--font-mono);
+	font-size: 0.72rem;
+	color: var(--text-faint);
+}
+
+/* Live camera */
+.live {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: clamp(28px, 4vw, 56px);
+	align-items: center;
+}
+
+.live__frame {
+	position: relative;
+	border-radius: var(--radius-card);
+	overflow: hidden;
+	background: #000;
+	aspect-ratio: 3 / 4;
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), var(--shadow-lift);
+	display: grid;
+	place-items: center;
+}
+
+.live__frame canvas,
+.live__frame video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	grid-area: 1 / 1;
+}
+
+.live__video {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.live__idle {
+	grid-area: 1 / 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	padding: 32px;
+	text-align: center;
+	color: var(--text-faint);
+	font-size: 0.86rem;
+	max-width: 30ch;
+}
+
+.live__controls {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-top: 22px;
+}
+
+.live__shutter {
+	width: 54px;
+	height: 54px;
+	border-radius: 50%;
+	background: var(--ink-200);
+	box-shadow: inset 0 0 0 3px var(--text);
+	transition: transform 0.16s var(--ease), background 0.2s;
+}
+
+.live__shutter:hover {
+	background: var(--ink-300);
+}
+
+.live__shutter:active {
+	transform: scale(0.94);
+}
+
+/* --- footer -------------------------------------------------------------- */
+
+.footer {
+	padding: 40px 0 56px;
+	border-top: 1px solid rgb(255 255 255 / 0.06);
+	color: var(--text-faint);
+	font-size: 0.82rem;
+}
+
+.footer__row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 26px;
+	align-items: baseline;
+}
+
+/* Kept quieter than the rest of the footer: it is a legal clarification, not
+   something to read first. */
+.footer__note {
+	margin-top: 12px;
+	max-width: 62ch;
+	color: var(--text-faint);
+	font-size: 0.76rem;
+	line-height: 1.6;
+	opacity: 0.85;
+}
+
+.footer a {
+	color: var(--text-dim);
+	text-decoration: none;
+	border-bottom: 1px solid rgb(255 255 255 / 0.18);
+}
+
+.footer a:hover {
+	color: var(--text);
+}
+
+/* --- responsive ---------------------------------------------------------- */
+
+/* The editor is a single column at every size: photo, then panel, then the mode
+   row. On wider screens the panel lays its controls out in columns instead of
+   one long stack, which is what keeps it off-screen-height on desktop. */
+
+@media (min-width: 760px) {
+	.panel__body {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 16px 24px;
+		align-items: start;
+	}
+
+	/* Full-width items inside the two-column panel. */
+	.panel__label,
+	.swatches,
+	.ratios,
+	.seg,
+	.shapes,
+	.chips {
+		grid-column: 1 / -1;
+	}
+
+	.panel__body > .btn {
+		grid-column: 1 / -1;
+		justify-self: start;
+	}
+}
+
+@media (min-width: 1100px) {
+	.panel__body {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+/* Compare strip: 4 across only when there is genuinely room. */
+@media (max-width: 1000px) {
+	.compare {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.live {
+		grid-template-columns: 1fr;
+		gap: 32px;
+	}
+
+	.live__frame {
+		max-width: 460px;
+		margin-inline: auto;
+	}
+}
+
+@media (max-width: 640px) {
+	.shell {
+		width: calc(100% - 24px);
+	}
+
+	/* Brand and language on one row, section links on a second. At 375px the
+	   three links plus the language toggle and the brand do not fit on a single
+	   row — they overflowed and wrapped badly, which is what made the header look
+	   broken. Two rows also gives every link a full-size touch target. */
+	.nav__inner {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		grid-template-areas:
+			'brand lang'
+			'links links';
+		gap: 8px 12px;
+		height: auto;
+		padding: 10px 0 12px;
+	}
+
+	.brand {
+		grid-area: brand;
+	}
+
+	.nav__links {
+		grid-area: links;
+		margin-left: 0;
+		gap: 6px;
+		/* Scrolls rather than wrapping if a locale has longer labels. */
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.nav__links::-webkit-scrollbar {
+		display: none;
+	}
+
+	.nav__link {
+		flex: 0 0 auto;
+		padding: 9px 14px;
+		font-size: 0.82rem;
+		background: var(--ink-200);
+	}
+
+	.lang {
+		grid-area: lang;
+	}
+
+	.lang__opt {
+		padding: 7px 11px;
+	}
+
+	/* The hero headline should not eat the first screen on a phone. */
+	.display {
+		font-size: clamp(2rem, 9vw, 2.6rem);
+	}
+
+	.hero {
+		padding-top: 24px;
+	}
+
+	.hero__copy {
+		gap: 16px;
+	}
+
+	.editor {
+		border-radius: 18px;
+	}
+
+	.editor__stage {
+		padding: 8px;
+	}
+
+	.compare {
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
+
+	.compare__hex {
+		display: none;
+	}
+
+	.ratios {
+		grid-template-columns: repeat(4, 1fr);
+	}
+
+	.band {
+		padding: 44px 0;
+	}
+}
+
+@media (max-width: 380px) {
+	.compare {
+		grid-template-columns: 1fr;
+	}
+
+	.nav__link {
+		padding: 9px 12px;
+		font-size: 0.78rem;
+	}
+}
+
+/* Touch devices: larger hit areas, and no hover-only affordances. */
+@media (hover: none) {
+	.swatch {
+		width: 32px;
+		height: 32px;
+	}
+
+	.swatch:hover {
+		transform: none;
+	}
+
+	.ratio {
+		padding: 11px 4px;
+	}
+
+	.chip {
+		padding: 10px 16px;
+	}
+
+	.seg__opt {
+		padding: 10px 8px;
+	}
+
+	.iconbtn {
+		width: 40px;
+		height: 40px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		transition-duration: 0.001ms !important;
+	}
+}

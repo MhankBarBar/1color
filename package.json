@@ -1,0 +1,26 @@
+{
+	"name": "1color",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"description": "Keep one color in a photo, let the rest fall to black and white.",
+	"homepage": "https://1color.mhankbarbar.dev",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/MhankBarBar/1color.git"
+	},
+	"author": "MhankBarBar",
+	"license": "MIT",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
+		"test": "node --test src/lib/color.test.js src/lib/export.test.js src/lib/gl.test.js src/lib/mask.test.js src/lib/loadGate.test.js",
+		"deploy": "npm run build && npx --yes wrangler pages deploy dist --project-name 1color --force"
+	},
+	"devDependencies": {
+		"@sveltejs/vite-plugin-svelte": "^7.3.0",
+		"svelte": "^5.57.1",
+		"vite": "^8.3.0"
+	}
+}

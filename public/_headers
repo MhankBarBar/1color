@@ -1,0 +1,17 @@
+# Hashed build output never changes under a given name.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Sample photos are stable but not fingerprinted; a week is plenty.
+/samples/*
+  Cache-Control: public, max-age=604800
+
+# The shell must revalidate so a deploy is picked up immediately.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+# The camera needs to be same-origin with the page; nothing else is allowed.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=()

@@ -1,0 +1,304 @@
+<script>
+	/**
+	 * 1color — keep one color in a photo, lose the rest.
+	 *
+	 * English is the default locale; Japanese is the second. The interface tint is
+	 * driven by whichever color is sampled from the photo.
+	 */
+	import Editor from './components/Editor.svelte';
+	import Live from './components/Live.svelte';
+	import AccentTile from './components/AccentTile.svelte';
+	import { dict, locales } from './lib/i18n.js';
+	import { icon } from './lib/icons.js';
+	import { rgbToHex, hexToRgb, inkOn } from './lib/color.js';
+	import { loadPhoto, isAccepted } from './lib/image.js';
+	import { Sampler, showcaseAccents } from './lib/analysis.js';
+	import { createLoadGate } from './lib/loadGate.js';
+
+	const SAMPLES = [
+		{
+			src: '/samples/sunflowers.jpg',
+			label: { en: 'Sunflower field', ja: 'ひまわり畑' },
+			accent: { r: 240, g: 186, b: 20 }
+		},
+		{
+			src: '/samples/blue-door.jpg',
+			label: { en: 'Blue door', ja: '青い扉' },
+			accent: { r: 30, g: 108, b: 178 }
+		},
+		{
+			src: '/samples/lanterns.jpg',
+			label: { en: 'Red lanterns', ja: '赤い提灯' },
+			accent: { r: 210, g: 40, b: 30 }
+		}
+	];
+
+	// --- locale ------------------------------------------------------------
+
+	let locale = $state('en');
+	const t = $derived((key) => dict[locale][key] ?? dict.en[key] ?? key);
+
+	$effect(() => {
+		document.documentElement.lang = locale;
+	});
+
+	// --- photo state -------------------------------------------------------
+
+	let source = $state(null);
+	let sampler = $state(null);
+	let fileInput = $state(null);
+
+	/**
+	 * Load lifecycle: 'idle' | 'loading' | 'ready' | 'error'.
+	 *
+	 * The stage only offers its drop target once loading has settled, so the
+	 * first paint does not flash a drag-and-drop prompt that the auto-loaded
+	 * sample immediately replaces.
+	 */
+	// Starts as 'loading' rather than 'idle': the boot sample always loads on
+	// mount, so declaring that up front means the very first paint shows the
+	// placeholder instead of flashing a drop target for one frame.
+	let loadState = $state('loading');
+	let loadError = $state('');
+
+	/** Guards against an older load landing after a newer one. */
+	const loadGate = createLoadGate();
+
+	// --- accent state ------------------------------------------------------
+
+	let accentHex = $state('#FCC000');
+	let accentInk = $state('#09090A');
+	let coverage = $state(0);
+
+
+	function applyAccent({ hex, coverage: cov }) {
+		accentHex = hex;
+		accentInk = inkOn(hexToRgb(hex));
+		coverage = cov;
+		const root = document.documentElement;
+		root.style.setProperty('--accent', hex);
+		root.style.setProperty('--accent-ink', accentInk);
+		root.style.setProperty('--accent-glow', `rgb(${hexToRgb(hex).r} ${hexToRgb(hex).g} ${hexToRgb(hex).b} / 0.16)`);
+	}
+
+	/** Adopt a decoded blob, but only if `token` is still the newest load. */
+	async function adopt(blob, token, { scroll = true } = {}) {
+		loadState = 'loading';
+		loadError = '';
+		try {
+			const photo = await loadPhoto(blob);
+			if (!loadGate.isCurrent(token)) {
+				// Superseded while decoding. Release the pixels rather than
+				// leaving a large ImageBitmap for the GC to find later.
+				photo.source?.close?.();
+				return;
+			}
+			source = photo.source;
+			sampler = new Sampler(photo.source);
+			loadState = 'ready';
+			if (scroll) {
+				requestAnimationFrame(() => {
+					document.getElementById('editor')?.scrollIntoView({ block: 'start' });
+				});
+			}
+		} catch (err) {
+			if (!loadGate.isCurrent(token)) return;
+			console.error(err);
+			loadState = 'error';
+			loadError = t('stage.error');
+		}
+	}
+
+	async function openBlob(blob, opts) {
+		if (!blob) return;
+		if (!isAccepted(blob)) {
+			loadState = 'error';
+			loadError = t('stage.error');
+			return;
+		}
+		return adopt(blob, loadGate.begin(), opts);
+	}
+
+	async function openSample(sample) {
+		const token = loadGate.begin();
+		loadState = 'loading';
+		loadError = '';
+		try {
+			const res = await fetch(sample.src);
+			const blob = await res.blob();
+			if (!loadGate.isCurrent(token)) return;
+			await adopt(blob, token, { scroll: true });
+		} catch (err) {
+			if (!loadGate.isCurrent(token)) return;
+			console.error(err);
+			loadState = 'error';
+			loadError = t('stage.error');
+		}
+	}
+
+	/** Open the first sample automatically so the hero is never an empty shell. */
+	let booted = $state(false);
+	$effect(() => {
+		if (booted) return;
+		booted = true;
+		openSample(SAMPLES[0]);
+	});
+
+	// Clipboard paste, anywhere on the page.
+	function onPaste(e) {
+		const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
+		if (item) openBlob(item.getAsFile());
+	}
+
+	// --- showcase ----------------------------------------------------------
+
+	const showcase = $derived.by(() => {
+		if (!sampler) return [];
+		return showcaseAccents(sampler.palette).map((a) => ({
+			...a,
+			label: t(`accents.${a.key}`)
+		}));
+	});
+
+	const samples = $derived(
+		SAMPLES.map((s) => ({ src: s.src, label: s.label[locale] }))
+	);
+
+	function scrollTo(id) {
+		document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+	}
+</script>
+
+<svelte:window onpaste={onPaste} />
+
+<header class="nav">
+	<div class="shell nav__inner">
+		<div class="brand">
+			<span class="brand__dot" aria-hidden="true"></span>
+			1color
+		</div>
+		<nav class="nav__links">
+			<button class="nav__link is-current" onclick={() => scrollTo('editor')}>{t('nav.editor')}</button>
+			<button class="nav__link" onclick={() => scrollTo('accents')}>{t('nav.accents')}</button>
+			<button class="nav__link" onclick={() => scrollTo('live')}>{t('nav.live')}</button>
+		</nav>
+		<div class="lang" role="group" aria-label={t('lang.switch')}>
+			{#each locales as l (l.id)}
+				<button
+					class="lang__opt"
+					class:is-on={locale === l.id}
+					onclick={() => (locale = l.id)}
+					aria-pressed={locale === l.id}
+				>{l.label}</button>
+			{/each}
+		</div>
+	</div>
+</header>
+
+<main>
+	<section class="hero">
+		<div class="shell hero__grid">
+			<div class="hero__copy">
+				<h1 class="display">
+					{t('hero.title.pre')}<span class="tint">{t('hero.title.accent')}</span>{t('hero.title.post')}
+				</h1>
+				<p class="lede">{t('hero.sub')}</p>
+
+				<div class="hero__actions">
+					<button class="btn btn--primary" onclick={() => fileInput?.click()}>
+						{t('hero.open')}
+					</button>
+				</div>
+
+				<p class="hero__hint">
+					<span style="width: 15px; display: inline-block" aria-hidden="true">{@html icon('hand')}</span>
+					{t('hero.hint')}
+				</p>
+
+				{#if loadError}
+					<p class="notice" role="alert">
+						<span aria-hidden="true">{@html icon('info')}</span>
+						{loadError}
+					</p>
+				{/if}
+			</div>
+
+			<div id="editor">
+				<Editor
+					{source}
+					{sampler}
+					loading={loadState === 'loading'}
+					{samples}
+					{t}
+					onopen={() => fileInput?.click()}
+					onsample={openSample}
+					onaccent={applyAccent}
+				/>
+			</div>
+		</div>
+	</section>
+
+	<section class="band" id="accents">
+		<div class="shell">
+			<div class="band__head">
+				<h2 class="section-title">{t('accents.title')}</h2>
+			</div>
+
+			{#if source && showcase.length}
+				<div class="compare">
+					{#each showcase as a (a.key)}
+						<div class="compare__item">
+							<AccentTile {source} target={a.rgb} label={a.label} />
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="compare">
+					{#each SAMPLES as s (s.src)}
+						<div class="compare__item">
+							<button class="sample-tile" onclick={() => openSample(s)}>
+								<img src={s.src} alt={s.label[locale]} loading="lazy" />
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</section>
+
+	<section class="band" id="live">
+		<div class="shell">
+			<Live {t} oncapture={(blob) => openBlob(blob, { scroll: true })} />
+		</div>
+	</section>
+</main>
+
+<footer class="footer">
+	<div class="shell">
+		<div class="footer__row">
+			<span>{t('footer.built')}</span>
+			<a href="https://commons.wikimedia.org" target="_blank" rel="noreferrer noopener">
+				{t('footer.photos')}
+			</a>
+			<a
+				href="https://apps.apple.com/jp/app/accent-selective-color/id6801496954"
+				target="_blank"
+				rel="noreferrer noopener"
+			>
+				{t('footer.iosapp')}
+			</a>
+		</div>
+		<p class="footer__note">{t('footer.disclaimer')}</p>
+	</div>
+</footer>
+
+<input
+	bind:this={fileInput}
+	type="file"
+	accept="image/*"
+	hidden
+	onchange={(e) => {
+		openBlob(e.currentTarget.files?.[0]);
+		e.currentTarget.value = '';
+	}}
+/>

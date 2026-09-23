@@ -1,0 +1,10 @@
+name = "1color"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-23"
+
+# Static SPA — no server runtime. The whole app is client-side: the selective
+# color pass runs on the GPU (WebGL2, falling back to WebGL1) and the camera
+# feed never leaves the device, so there is nothing to bind here.
+#
+# Served at 1color.mhankbarbar.dev; needs a proxied CNAME for `1color`
+# pointing at 1color.pages.dev.
