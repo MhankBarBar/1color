@@ -27,8 +27,6 @@
 		ondropfile = () => {},
 		onbrowse = () => {},
 		t = (k) => k,
-		samples = [],
-		onsample = () => {},
 		frame = 'none',
 		customFrame = '#F6F6F8',
 		marginPct = 50,
@@ -722,23 +720,6 @@
 			</span>
 			<p class="dropzone__text">{t('stage.drop')}</p>
 			<button class="btn btn--ghost" onclick={onbrowse}>{t('stage.browse')}</button>
-			{#if samples.length}
-				<div>
-					<p class="eyebrow" style="margin-bottom: 8px">{t('stage.samples')}</p>
-					<div class="samples">
-						{#each samples as s (s.src)}
-							<button
-								class="samples__btn tip"
-								data-tip={s.label}
-								onclick={() => onsample(s)}
-								aria-label={s.label}
-							>
-								<img src={s.src} alt="" loading="lazy" />
-							</button>
-						{/each}
-					</div>
-				</div>
-			{/if}
 		</div>
 	{/if}
 </div>

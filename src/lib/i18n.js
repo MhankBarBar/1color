@@ -16,6 +16,7 @@ export const dict = {
 		'hero.title.post': ', lose the rest.',
 		'hero.sub': 'Tap any color in a photo. Everything outside it turns black and white.',
 		'hero.open': 'Open a photo',
+		'hero.samples': 'Or try a sample',
 		'hero.hint': 'Drag across the photo to move the color.',
 
 		'stage.drop': 'Drop a photo, paste, or pick one',
@@ -109,6 +110,7 @@ export const dict = {
 		'hero.title.post': 'だけ。',
 		'hero.sub': '写真の中の色をタップするだけ。それ以外はモノクロになります。',
 		'hero.open': '写真を開く',
+		'hero.samples': 'サンプルで試す',
 		'hero.hint': '写真をなぞると、残す色が移り変わります。',
 
 		'stage.drop': '写真をドロップ、貼り付け、または選択',

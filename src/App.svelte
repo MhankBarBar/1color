@@ -208,6 +208,21 @@
 					<button class="btn btn--primary" onclick={() => fileInput?.click()}>
 						{t('hero.open')}
 					</button>
+					<div class="hero__samples">
+						<span class="hero__samples-label">{t('hero.samples')}</span>
+						<div class="samples">
+							{#each samples as s (s.src)}
+								<button
+									class="samples__btn tip"
+									data-tip={s.label}
+									onclick={() => openSample(s)}
+									aria-label={s.label}
+								>
+									<img src={s.src} alt="" loading="lazy" />
+								</button>
+							{/each}
+						</div>
+					</div>
 				</div>
 
 				<p class="hero__hint">
@@ -228,10 +243,8 @@
 					{source}
 					{sampler}
 					loading={loadState === 'loading'}
-					{samples}
 					{t}
 					onopen={() => fileInput?.click()}
-					onsample={openSample}
 					onaccent={applyAccent}
 				/>
 			</div>

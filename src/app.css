@@ -297,8 +297,31 @@ svg {
 .hero__actions {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 10px;
+	align-items: center;
+	gap: 14px;
 	margin-top: 4px;
+}
+
+/* Sample picker lives in the hero rather than the stage's empty state: the
+   auto-loaded sample makes that state unreachable, so the other two photos were
+   previously impossible to open. */
+.hero__samples {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+
+.hero__samples-label {
+	font-size: 0.8rem;
+	color: var(--text-faint);
+	white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+	.hero__samples-label {
+		display: none;
+	}
 }
 
 .hero__hint {

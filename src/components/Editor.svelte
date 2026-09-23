@@ -17,7 +17,6 @@
 	let {
 		source = null,
 		sampler = null,
-		samples = [],
 		loading = false,
 		t = (k) => k,
 		onopen = () => {},
@@ -318,7 +317,6 @@
 			{strokes}
 			{brushSize}
 			{t}
-			{samples}
 			{frame}
 			{customFrame}
 			marginPct={margin}
