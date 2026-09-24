@@ -630,8 +630,12 @@ svg {
 /* Icons are injected with {@html}, so Svelte cannot see them and strips any
    `svg` rule declared inside a component as unused. Rules for them have to live
    here, in the global sheet. `.mode__disc svg` and `.shape__disc svg` were
-   always here for that reason. */
-.iconbtn svg {
+   always here for that reason.
+
+   The toolbar button's icon is wrapped in a span rather than sitting directly
+   inside the button, which is the shape every other icon in the app already
+   had. */
+.iconbtn > span svg {
 	width: 21px;
 	height: 21px;
 }

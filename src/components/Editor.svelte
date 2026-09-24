@@ -368,7 +368,7 @@
 				onclick={save}
 				disabled={!source || busy}
 			>
-				{@html icon('save')}
+				<span aria-hidden="true">{@html icon('save')}</span>
 				<span class="sr">{t('out.save')}</span>
 			</button>
 			{#if canShare}
@@ -378,7 +378,7 @@
 					onclick={share}
 					disabled={!source || busy}
 				>
-					{@html icon('share')}
+					<span aria-hidden="true">{@html icon('share')}</span>
 					<span class="sr">{t('out.share')}</span>
 				</button>
 			{/if}
@@ -389,7 +389,7 @@
 				onclick={() => (compare = !compare)}
 				aria-pressed={compare}
 			>
-				{@html icon('compare')}
+				<span aria-hidden="true">{@html icon('compare')}</span>
 				<span class="sr">{t('compare.toggle')}</span>
 			</button>
 		</div>
