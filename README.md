@@ -111,15 +111,17 @@ A static SPA — `dist/` is served as-is.
 
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name 1color --force
+npx wrangler pages deploy dist --project-name 1color --branch=main --force
 ```
 
 `--force` is required on Cloudflare Pages under wrangler 4, which otherwise
 delegates to Workers and fails looking for a Worker entry-point.
 
-Served at **https://1color.mhankbarbar.dev**, with `1color.pages.dev` as the
-Cloudflare-assigned fallback. The custom domain needs a proxied `CNAME` for
-`1color` pointing at `1color.pages.dev` in the zone's DNS.
+`--branch=main` is required too, and omitting it fails quietly: wrangler uses the
+current git branch as the deploy's branch, and Pages publishes anything that is
+not the production branch as a preview alias rather than to the site. The command
+still reports success, so a deploy from a feature branch looks fine while the
+live site keeps serving the previous build.
 
 For a Git-connected Pages project, use build command `npm run build` and output
 directory `dist`.
