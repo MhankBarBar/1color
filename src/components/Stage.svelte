@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * The stage: GL canvas plus an SVG overlay for range editing.
 	 *
@@ -10,6 +10,33 @@
 	import { rgbToHex, hexToRgb, inkOn } from '../lib/color.js';
 	import { composeGeometry, cropRect, drawOverlayBlock } from '../lib/export.js';
 	import { icon } from '../lib/icons.js';
+	import type {
+		Align,
+		FrameId,
+		Point,
+		PixelSource,
+		RenderParamsInput,
+		Rgb,
+		Shape,
+		ShapeKind,
+		Stroke
+	} from '../lib/types.js';
+
+	/** The two region scopes the stage can be in. */
+	type Scope = 'all' | 'part';
+
+	/** Which manipulation a pointer drag is performing. */
+	type DragKind = 'pick' | 'brush' | 'lasso' | 'move' | 'resize' | 'rotate';
+
+	interface Drag {
+		kind: DragKind;
+		/** Where the drag began, for the relative moves. Absent for pick/brush/lasso. */
+		start?: Point;
+		/** The shape as it was when the drag began, so moves are relative to it. */
+		base?: Shape | null;
+		/** Which corner a resize is dragging. */
+		index?: number;
+	}
 
 	let {
 		source = null,
@@ -21,13 +48,13 @@
 		strokes = [],
 		brushSize = 0.08,
 		brushHint = false,
-		onpick = () => {},
-		onshape = () => {},
-		onlasso = () => {},
-		onstroke = () => {},
-		ondropfile = () => {},
+		onpick = (_p: Point) => {},
+		onshape = (_s: Shape | null) => {},
+		onlasso = (_l: Point[]) => {},
+		onstroke = (_s: Stroke[]) => {},
+		ondropfile = (_file?: File) => {},
 		onbrowse = () => {},
-		t = (k) => k,
+		t = (k: string) => k,
 		frame = 'none',
 		customFrame = '#F6F6F8',
 		marginPct = 50,
@@ -39,25 +66,53 @@
 		showCode = false,
 		showMix = false,
 		mixPalette = null
+	}: {
+		source?: PixelSource | null;
+		params: RenderParamsInput & { target: Rgb };
+		scope?: Scope;
+		shapeKind?: ShapeKind;
+		shape?: Shape | null;
+		lasso?: Point[];
+		strokes?: Stroke[];
+		brushSize?: number;
+		brushHint?: boolean;
+		onpick?: (p: Point) => void;
+		onshape?: (s: Shape | null) => void;
+		onlasso?: (l: Point[]) => void;
+		onstroke?: (s: Stroke[]) => void;
+		ondropfile?: (file?: File) => void;
+		onbrowse?: () => void;
+		t?: (key: string) => string;
+		frame?: FrameId;
+		customFrame?: string;
+		marginPct?: number;
+		ratio?: string;
+		align?: Align;
+		compare?: boolean;
+		loading?: boolean;
+		showSwatch?: boolean;
+		showCode?: boolean;
+		showMix?: boolean;
+		mixPalette?: Rgb[] | null;
 	} = $props();
 
-	let canvasEl = $state(null);
-	let boxEl = $state(null);
+	let canvasEl = $state<HTMLCanvasElement | null>(null);
+	let boxEl = $state<HTMLDivElement | null>(null);
 	/** Overlay preview canvas, covering the photo box and the frame band. */
-	let composeEl = $state(null);
+	let composeEl = $state<HTMLCanvasElement | null>(null);
 	// $state, not a plain binding: every effect below depends on the renderer
 	// existing, and a plain variable would not re-trigger them once it is
 	// assigned. That bug shows up as a permanently blank canvas.
-	let renderer = $state(null);
-	let mask = $state(null);
+	let renderer = $state<Renderer | null>(null);
+	let mask = $state<MaskLayer | null>(null);
 	/** The source the current mask was built for; identity, not size. */
-	let maskFor = null;
+	let maskFor: PixelSource | null = null;
 	let over = $state(false);
 	let glError = $state('');
 
 	/** Position of the before/after divider, 0..1 across the photo. */
 	let split = $state(0.5);
-	let beforeEl = $state(null);
+	let beforeEl = $state<HTMLCanvasElement | null>(null);
 	let draggingSplit = $state(false);
 
 	// The "before" layer is a one-off 2D snapshot of the untouched source, clipped
@@ -77,6 +132,7 @@
 			beforeEl.height = h;
 		}
 		const ctx = beforeEl.getContext('2d');
+		if (!ctx) return;
 		ctx.clearRect(0, 0, w, h);
 		const c = crop;
 		ctx.drawImage(
@@ -92,7 +148,7 @@
 		);
 	});
 
-	function splitFromEvent(e) {
+	function splitFromEvent(e: PointerEvent): void {
 		if (!boxEl) return;
 		const r = boxEl.getBoundingClientRect();
 		split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
@@ -113,12 +169,12 @@
 	 * same part of the photo when the ratio changes. Only this mapping moves, which
 	 * is what makes the crop reversible in the UI.
 	 */
-	const viewToImage = (p) => ({
+	const viewToImage = (p: Point): Point => ({
 		x: crop.sx + p.x * crop.sw,
 		y: crop.sy + p.y * crop.sh
 	});
 
-	const imageToView = (p) => ({
+	const imageToView = (p: Point): Point => ({
 		x: (p.x - crop.sx) / crop.sw,
 		y: (p.y - crop.sy) / crop.sh
 	});
@@ -129,7 +185,12 @@
 			renderer = new Renderer(canvasEl);
 		} catch (err) {
 			console.error(err);
-			glError = err?.message?.includes('cannot run WebGL') ? 'nogl' : err?.message || String(err);
+			glError =
+				err instanceof Error && err.message.includes('cannot run WebGL')
+					? 'nogl'
+					: err instanceof Error
+						? err.message
+						: String(err);
 			return;
 		}
 		return () => {
@@ -148,7 +209,7 @@
 
 	let pendingFrame = 0;
 
-	function schedule() {
+	function schedule(): void {
 		if (pendingFrame) return;
 		pendingFrame = requestAnimationFrame(() => {
 			pendingFrame = 0;
@@ -164,9 +225,14 @@
 	 * layer and replays every point — during a drag that was the dominant cost,
 	 * growing with the length of the stroke.
 	 */
-	let maskState = { strokes: -1, pts: -1, shape: undefined, lasso: -1 };
+	let maskState: { strokes: number; pts: number; shape: Shape | null | undefined; lasso: number } = {
+		strokes: -1,
+		pts: -1,
+		shape: undefined,
+		lasso: -1
+	};
 
-	function paintMask() {
+	function paintMask(): void {
 		if (!mask) return;
 		const totalPts = strokes.reduce((n, s) => n + s.pts.length, 0);
 		const canAppend =
@@ -186,7 +252,7 @@
 		maskState = { strokes: strokes.length, pts: totalPts, shape, lasso: lasso.length };
 	}
 
-	function draw() {
+	function draw(): void {
 		const r = renderer;
 		if (!r || !source || !boxEl) return;
 		const w = boxEl.clientWidth;
@@ -204,7 +270,7 @@
 				maskState = { strokes: -1, pts: -1, shape: undefined, lasso: -1 };
 			}
 			paintMask();
-			r.setMask(mask.canvas);
+			if (mask) r.setMask(mask.canvas);
 		}
 
 		r.setParams({ ...params, crop });
@@ -236,19 +302,20 @@
 	// is itself determined by the frame we are about to size, so reading it would
 	// be circular and collapse the stage to nothing. The page scrolls, and this
 	// cap just stops a tall portrait photo from filling the whole screen.
-	let hostEl = $state(null);
+	let hostEl = $state<HTMLDivElement | null>(null);
 	let avail = $state({ w: 0, h: 0 });
 
 	const MAX_STAGE_H = () => Math.min(globalThis.innerHeight * 0.68, 760);
 
 	$effect(() => {
 		if (!hostEl) return;
+		const host = hostEl;
 		const measure = () => {
-			avail = { w: hostEl.clientWidth, h: MAX_STAGE_H() };
+			avail = { w: host.clientWidth, h: MAX_STAGE_H() };
 		};
 		measure();
 		const ro = new ResizeObserver(measure);
-		ro.observe(hostEl);
+		ro.observe(host);
 		addEventListener('resize', measure);
 		return () => {
 			ro.disconnect();
@@ -269,6 +336,28 @@
 		return { w: Math.round(w), h: Math.round(h) };
 	});
 
+	// Frame preview. The geometry comes from the export's own `composeGeometry`,
+	// so the band the preview draws into is by construction the band the export
+	// writes into. Deriving it here by hand is what let the two drift.
+	//
+	// The size passed in is the *cropped* photo, matching what `outputSize` returns
+	// for the export — otherwise the preview and the file would disagree the moment
+	// a ratio was chosen.
+	const framed = $derived.by(() =>
+		composeGeometry({
+			imgW: Math.max(2, Math.round((source?.width || 1) * crop.sw)),
+			imgH: Math.max(2, Math.round((source?.height || 1) * crop.sh)),
+			frame,
+			accentHex: rgbToHex(params.target),
+			customHex: customFrame,
+			margin: marginPct,
+			align,
+			showSwatch,
+			showCode,
+			showMix
+		})
+	);
+
 	// The drawing buffer follows the inner (photo) box, which changes when the
 	// letterbox fit or the frame padding changes. `clientWidth` is not reactive,
 	// so observe it.
@@ -285,8 +374,10 @@
 	// --- pointer handling --------------------------------------------------
 
 	/** Map a pointer event to normalised photo coordinates (full image space). */
-	function toImage(e) {
-		const r = boxEl.getBoundingClientRect();
+	function toImage(e: { clientX: number; clientY: number }): Point {
+		const box = boxEl;
+		if (!box) return { x: 0, y: 0 };
+		const r = box.getBoundingClientRect();
 		// Through the crop: the stage shows the cropped rect, and region geometry
 		// lives in full-image coordinates.
 		return viewToImage({
@@ -295,7 +386,23 @@
 		});
 	}
 
-	let drag = $state(null);
+	let drag = $state<Drag | null>(null);
+
+	// Overlay geometry in PIXELS, not normalised units.
+	//
+	// The overlay used to be an SVG with viewBox="0 0 1 1" and
+	// preserveAspectRatio="none", so a stroke-width of 0.02 scaled differently
+	// on x and y — brush strokes came out elliptical instead of round. Emitting
+	// pixel coordinates with a 1:1 viewBox makes stroke widths uniform.
+	//
+	// Declared here, above the first reader, because `const` bindings are in the
+	// temporal dead zone until their declaration runs — `$derived` defers the
+	// expression, but the binding itself must already be initialised when a later
+	// derivation reads it.
+	const px = $derived({
+		w: fit.w || 1,
+		h: fit.h || 1
+	});
 
 	/**
 	 * Live pointer position, in normalised image coordinates.
@@ -304,8 +411,8 @@
 	 * the actual brush size before you commit to a stroke, and a loupe so you can
 	 * see what you are sampling on a small screen.
 	 */
-	let pointer = $state(null);
-	let loupeEl = $state(null);
+	let pointer = $state<Point | null>(null);
+	let loupeEl = $state<HTMLCanvasElement | null>(null);
 
 	/** `pointer`, expressed in view space, for anything positioned with CSS. */
 	const pointerView = $derived(pointer ? imageToView(pointer) : null);
@@ -371,14 +478,16 @@
 		const sx = Math.min(Math.max(0, pt.x * source.width - span / 2), maxX);
 		const sy = Math.min(Math.max(0, pt.y * source.height - span / 2), maxY);
 		const ctx = el.getContext('2d');
+		if (!ctx) return;
 		ctx.imageSmoothingEnabled = false;
 		ctx.clearRect(0, 0, size, size);
 		ctx.drawImage(source, sx, sy, span, span, 0, 0, size, size);
 	});
 
-	function onPointerDown(e) {
-		if (!source) return;
-		boxEl.setPointerCapture(e.pointerId);
+	function onPointerDown(e: PointerEvent): void {
+		const box = boxEl;
+		if (!source || !box) return;
+		box.setPointerCapture(e.pointerId);
 		const p = toImage(e);
 
 		// Region editing is available in both accent and range mode — range is
@@ -406,8 +515,8 @@
 		}
 
 		// Shape manipulation: grab a corner, the rotate handle, or the body.
-		const handle = hitHandle(p);
-		if (handle) {
+		const handle = shape ? hitHandle(p) : null;
+		if (handle && shape) {
 			drag = { kind: handle.type, start: p, base: { ...shape }, index: handle.index };
 			return;
 		}
@@ -420,7 +529,7 @@
 		drag = { kind: 'move', start: p, base: null };
 	}
 
-	function onPointerMove(e) {
+	function onPointerMove(e: PointerEvent): void {
 		if (!source) return;
 		const p = toImage(e);
 		pointer = p;
@@ -444,9 +553,10 @@
 		}
 
 		const base = drag.base || shape;
-		if (!base) return;
-		const dx = p.x - drag.start.x;
-		const dy = p.y - drag.start.y;
+		const start = drag.start;
+		if (!base || !start) return;
+		const dx = p.x - start.x;
+		const dy = p.y - start.y;
 
 		if (drag.kind === 'move') {
 			onshape({
@@ -463,8 +573,9 @@
 			const sin = Math.sin(-base.rot);
 			const lx = dx * cos - dy * sin;
 			const ly = dx * sin + dy * cos;
-			const sign = drag.index % 2 === 0 ? 1 : -1;
-			const signY = drag.index < 2 ? 1 : -1;
+			const index = drag.index ?? 0;
+			const sign = index % 2 === 0 ? 1 : -1;
+			const signY = index < 2 ? 1 : -1;
 			onshape({
 				...base,
 				w: Math.max(SHAPE_MIN, base.w + lx * sign),
@@ -473,24 +584,24 @@
 		}
 	}
 
-	function onPointerLeave() {
+	function onPointerLeave(): void {
 		if (!drag) pointer = null;
 	}
 
-	function onPointerUp(e) {
+	function onPointerUp(e: PointerEvent): void {
 		if (drag) {
 			if (drag.kind === 'lasso' && lasso.length < 3) onlasso([]);
 			drag = null;
 		}
 		try {
-			boxEl.releasePointerCapture(e.pointerId);
+			boxEl?.releasePointerCapture(e.pointerId);
 		} catch {
 			/* pointer already released */
 		}
 	}
 
 	/** Which resize/rotate handle, if any, is under the pointer. */
-	function hitHandle(p) {
+	function hitHandle(p: Point): { type: 'resize' | 'rotate'; index?: number } | null {
 		if (!shape || shapeKind === 'brush' || shapeKind === 'lasso') return null;
 		const TOL = 0.035;
 		const cos = Math.cos(shape.rot || 0);
@@ -523,13 +634,8 @@
 	// Region geometry lives in image space while this SVG is in view space, so
 	// every point goes through the crop mapping. Without that, cropping a ratio
 	// would slide the region off the pixels it was drawn over.
-	const px = $derived({
-		w: fit.w || 1,
-		h: fit.h || 1
-	});
-
 	/** View-space pixels for a point stored in image space. */
-	const toPx = (p) => {
+	const toPx = (p: Point): Point => {
 		const v = imageToView(p);
 		return { x: v.x * px.w, y: v.y * px.h };
 	};
@@ -606,6 +712,7 @@
 		}
 
 		const ctx = composeEl.getContext('2d');
+		if (!ctx) return;
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.clearRect(0, 0, bw, bh);
 
@@ -631,27 +738,6 @@
 	/** Whether the overlay preview has anything to draw. */
 	const hasOverlays = $derived(showSwatch || showCode || showMix);
 
-	// Frame preview. The geometry comes from the export's own `composeGeometry`,
-	// so the band the preview draws into is by construction the band the export
-	// writes into. Deriving it here by hand is what let the two drift.
-	//
-	// The size passed in is the *cropped* photo, matching what `outputSize` returns
-	// for the export — otherwise the preview and the file would disagree the moment
-	// a ratio was chosen.
-	const framed = $derived.by(() =>
-		composeGeometry({
-			imgW: Math.max(2, Math.round((source?.width || 1) * crop.sw)),
-			imgH: Math.max(2, Math.round((source?.height || 1) * crop.sh)),
-			frame,
-			accentHex: rgbToHex(params.target),
-			customHex: customFrame,
-			margin: marginPct,
-			align,
-			showSwatch,
-			showCode,
-			showMix
-		})
-	);
 </script>
 
 <div class="stage" bind:this={hostEl}>

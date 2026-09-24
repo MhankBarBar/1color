@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * Live camera: the same shader driven by the video feed.
 	 *
@@ -9,25 +9,36 @@
 	import { Renderer } from '../lib/gl.js';
 	import { rgbToHex } from '../lib/color.js';
 	import { icon } from '../lib/icons.js';
+	import type { Rgb } from '../lib/types.js';
 
-	let { t = (k) => k, oncapture = () => {} } = $props();
+	let {
+		t = (k: string) => k,
+		oncapture = (_blob: Blob) => {}
+	}: {
+		t?: (key: string) => string;
+		oncapture?: (blob: Blob) => void;
+	} = $props();
 
-	let videoEl = $state(null);
-	let canvasEl = $state(null);
-	let wrapEl = $state(null);
+	// The markup branches on these exact strings, so they are a union rather
+	// than a bare `string`.
+	type Status = 'idle' | 'starting' | 'live' | 'denied' | 'unsupported';
+	type ErrorKind = Exclude<Status, 'idle' | 'starting' | 'live'>;
 
-	let status = $state('idle'); // idle | starting | live | denied | unsupported
-	let errorKind = $state(null);
-	let target = $state({ r: 252, g: 192, b: 0 });
+	let videoEl = $state<HTMLVideoElement | null>(null);
+	let canvasEl = $state<HTMLCanvasElement | null>(null);
+	let wrapEl = $state<HTMLElement | null>(null);
+
+	let status = $state<Status>('idle'); // idle | starting | live | denied | unsupported
+	let errorKind = $state<ErrorKind | null>(null);
+	let target = $state<Rgb>({ r: 252, g: 192, b: 0 });
 	let width = $state(30);
 	let feather = $state(40);
 	let preset = $state(0);
-	let picked = $state(false);
 
-	let renderer = null;
-	let stream = null;
+	let renderer: Renderer | null = null;
+	let stream: MediaStream | null = null;
 	let raf = 0;
-	let probe = null;
+	let probe: HTMLCanvasElement | null = null;
 
 	const PRESETS = [
 		{ id: 0, key: 'mono.standard' },
@@ -52,13 +63,18 @@
 	});
 
 	$effect(() => {
-		if (!wrapEl || !renderer) return;
+		if (!wrapEl) return;
+		const wrap = wrapEl;
+		// Read through a local so the renderer is captured once: it is a plain
+		// variable, and the callback runs long after this effect's setup.
+		const r = renderer;
+		if (!r) return;
 		const ro = new ResizeObserver(([entry]) => {
-			const r = entry.contentRect;
-			renderer.resize(r.width, r.height);
-			renderer.render();
+			const box = entry.contentRect;
+			r.resize(box.width, box.height);
+			r.render();
 		});
-		ro.observe(wrapEl);
+		ro.observe(wrap);
 		return () => ro.disconnect();
 	});
 
@@ -71,12 +87,14 @@
 	// Stop the camera if the component goes away.
 	$effect(() => () => stopCamera());
 
-	async function startCamera() {
+	async function startCamera(): Promise<void> {
 		if (!navigator.mediaDevices?.getUserMedia) {
 			status = 'unsupported';
 			errorKind = 'unsupported';
 			return;
 		}
+		const video = videoEl;
+		if (!video) return;
 		status = 'starting';
 		try {
 			stream = await navigator.mediaDevices.getUserMedia({
@@ -84,13 +102,14 @@
 				audio: false
 			});
 		} catch (err) {
-			status = err?.name === 'NotAllowedError' ? 'denied' : 'unsupported';
+			const denied = err instanceof DOMException && err.name === 'NotAllowedError';
+			status = denied ? 'denied' : 'unsupported';
 			errorKind = status;
 			return;
 		}
 
-		videoEl.srcObject = stream;
-		await videoEl.play();
+		video.srcObject = stream;
+		await video.play();
 		status = 'live';
 		pump();
 	}
@@ -109,11 +128,12 @@
 	let lastFrame = 0;
 	let visible = true;
 
-	function pump(now = 0) {
-		if (status !== 'live' || !renderer) return;
-		if (visible && now - lastFrame >= FRAME_MS && videoEl.readyState >= 2) {
+	function pump(now = 0): void {
+		const video = videoEl;
+		if (status !== 'live' || !renderer || !video) return;
+		if (visible && now - lastFrame >= FRAME_MS && video.readyState >= 2) {
 			lastFrame = now;
-			renderer.upload(videoEl);
+			renderer.upload(video);
 			renderer.render();
 		}
 		raf = requestAnimationFrame(pump);
@@ -122,21 +142,22 @@
 	// Only run the loop while the preview is on screen.
 	$effect(() => {
 		if (!wrapEl) return;
+		const wrap = wrapEl;
 		const io = new IntersectionObserver(
 			([entry]) => {
 				visible = entry.isIntersecting;
 			},
 			{ threshold: 0.01 }
 		);
-		io.observe(wrapEl);
+		io.observe(wrap);
 		return () => io.disconnect();
 	});
 
-	function stopCamera() {
+	function stopCamera(): void {
 		cancelAnimationFrame(raf);
 		raf = 0;
 		lastFrame = 0;
-		for (const track of stream?.getTracks?.() || []) track.stop();
+		for (const track of stream?.getTracks() ?? []) track.stop();
 		stream = null;
 		if (videoEl) videoEl.srcObject = null;
 		if (status === 'live') status = 'idle';
@@ -144,21 +165,23 @@
 
 	/** Sample the video at a normalized point. Small 1:1 probe canvas, so the
 	 *  readback is exact rather than scaled. */
-	function pickColor(e) {
-		if (status !== 'live' || !videoEl?.videoWidth) return;
-		const r = canvasEl.getBoundingClientRect();
+	function pickColor(e: MouseEvent): void {
+		const video = videoEl;
+		const canvas = canvasEl;
+		if (status !== 'live' || !video?.videoWidth || !canvas) return;
+		const r = canvas.getBoundingClientRect();
 		const nx = (e.clientX - r.left) / r.width;
 		const ny = (e.clientY - r.top) / r.height;
 
 		// object-fit: cover crops the feed; reproduce that mapping.
-		const scale = Math.max(r.width / videoEl.videoWidth, r.height / videoEl.videoHeight);
-		const drawW = videoEl.videoWidth * scale;
-		const drawH = videoEl.videoHeight * scale;
+		const scale = Math.max(r.width / video.videoWidth, r.height / video.videoHeight);
+		const drawW = video.videoWidth * scale;
+		const drawH = video.videoHeight * scale;
 		const offX = (drawW - r.width) / 2;
 		const offY = (drawH - r.height) / 2;
 		const px = Math.round((nx * r.width + offX) / scale);
 		const py = Math.round((ny * r.height + offY) / scale);
-		if (px < 0 || py < 0 || px >= videoEl.videoWidth || py >= videoEl.videoHeight) return;
+		if (px < 0 || py < 0 || px >= video.videoWidth || py >= video.videoHeight) return;
 
 		if (!probe) {
 			probe = document.createElement('canvas');
@@ -166,25 +189,26 @@
 			probe.height = 1;
 		}
 		const ctx = probe.getContext('2d', { willReadFrequently: true });
-		ctx.drawImage(videoEl, px, py, 1, 1, 0, 0, 1, 1);
+		if (!ctx) return;
+		ctx.drawImage(video, px, py, 1, 1, 0, 0, 1, 1);
 		const d = ctx.getImageData(0, 0, 1, 1).data;
 		target = { r: d[0], g: d[1], b: d[2] };
-		picked = true;
 	}
 
-	async function capture() {
-		if (status !== 'live' || !videoEl?.videoWidth) return;
-		const w = videoEl.videoWidth;
-		const h = videoEl.videoHeight;
+	async function capture(): Promise<void> {
+		const video = videoEl;
+		if (status !== 'live' || !video?.videoWidth) return;
+		const w = video.videoWidth;
+		const h = video.videoHeight;
 		const off = document.createElement('canvas');
 		off.width = w;
 		off.height = h;
 		const r = new Renderer(off);
-		r.setImage(videoEl);
+		r.setImage(video);
 		r.setParams({ target, width, feather, preset, tone: 0, contrast: 0, maskOn: 0 });
 		r.resize(w, h, 1);
 		r.render();
-		const blob = await new Promise((res) => off.toBlob(res, 'image/png'));
+		const blob = await new Promise<Blob | null>((res) => off.toBlob(res, 'image/png'));
 		r.dispose();
 		if (blob) oncapture(blob);
 	}

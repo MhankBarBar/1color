@@ -12,11 +12,18 @@
 // disagreeing with the pixels.
 
 import { VERT_300, FRAG_300, VERT_100, FRAG_100, UNIFORMS } from './shaders.js';
+import type { UniformName } from './shaders.js';
+import type { RenderParams, RenderParamsInput, TextureSource } from './types.js';
 
 export { UNIFORMS, SHADERS } from './shaders.js';
 
-function compile(gl, type, src) {
+/** Both context flavours the renderer may hold. Exported so the test double can
+ *  be typed against the same union the renderer uses. */
+export type GL = WebGLRenderingContext | WebGL2RenderingContext;
+
+function compile(gl: GL, type: number, src: string): WebGLShader {
 	const sh = gl.createShader(type);
+	if (!sh) throw new Error('Could not create shader.');
 	gl.shaderSource(sh, src);
 	gl.compileShader(sh);
 	if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
@@ -27,8 +34,9 @@ function compile(gl, type, src) {
 	return sh;
 }
 
-function makeTexture(gl) {
+function makeTexture(gl: GL): WebGLTexture {
 	const t = gl.createTexture();
+	if (!t) throw new Error('Could not create texture.');
 	gl.bindTexture(gl.TEXTURE_2D, t);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -37,7 +45,7 @@ function makeTexture(gl) {
 	return t;
 }
 
-const DEFAULTS = {
+const DEFAULTS: RenderParams = {
 	target: { r: 255, g: 192, b: 0 },
 	width: 30,
 	feather: 40,
@@ -47,14 +55,37 @@ const DEFAULTS = {
 	maskOn: 0,
 	bypass: 0,
 	// The kept rect of the photo, in normalised units — the shape `cropRect` in
-	// export.js returns. The identity is the whole photo, which is what `original`
+	// export.ts returns. The identity is the whole photo, which is what `original`
 	// means.
 	crop: { sx: 0, sy: 0, sw: 1, sh: 1 }
 };
 
+/** The canvas a Renderer draws into. Both the stage and the offscreen thumbnail
+ *  renderer pass a real one; the tests pass a stub with a fake context. */
+export interface RendererCanvas {
+	width: number;
+	height: number;
+	getContext(
+		id: string,
+		opts?: WebGLContextAttributes
+	): RenderingContext | null;
+}
+
 export class Renderer {
-	/** @param {HTMLCanvasElement} canvas */
-	constructor(canvas) {
+	readonly canvas: RendererCanvas;
+	gl: GL;
+	isGL2: boolean;
+	prog: WebGLProgram;
+	attribLoc: number;
+	u: Record<UniformName, WebGLUniformLocation | null>;
+	imageTex: WebGLTexture;
+	maskTex: WebGLTexture;
+	/** The source currently resident in imageTex, for upload deduplication. */
+	_src: TextureSource | null;
+	params: RenderParams;
+	hasImage: boolean;
+
+	constructor(canvas: RendererCanvas) {
 		this.canvas = canvas;
 
 		// `preserveDrawingBuffer` must stay true. With it false the drawing buffer
@@ -62,7 +93,7 @@ export class Renderer {
 		// (scroll, resize, layout settle, tab switch) presents an empty buffer,
 		// which reads as the photo area going black. The stage paints on demand
 		// rather than in a loop, so preserving the buffer keeps the image on screen.
-		const opts = {
+		const opts: WebGLContextAttributes = {
 			antialias: false,
 			alpha: true,
 			premultipliedAlpha: false,
@@ -73,10 +104,10 @@ export class Renderer {
 
 		// WebGL2 first, then WebGL1. Both are fine: the shader math is identical,
 		// only the dialect differs.
-		let gl = null;
+		let gl: GL | null = null;
 		let isGL2 = false;
 		try {
-			gl = canvas.getContext('webgl2', opts);
+			gl = canvas.getContext('webgl2', opts) as GL | null;
 			isGL2 = !!gl;
 		} catch {
 			gl = null;
@@ -84,8 +115,8 @@ export class Renderer {
 		if (!gl) {
 			try {
 				gl =
-					canvas.getContext('webgl', opts) ||
-					canvas.getContext('experimental-webgl', opts);
+					(canvas.getContext('webgl', opts) as GL | null) ||
+					(canvas.getContext('experimental-webgl', opts) as GL | null);
 			} catch {
 				gl = null;
 			}
@@ -102,6 +133,7 @@ export class Renderer {
 		const frag = isGL2 ? FRAG_300 : FRAG_100;
 
 		const prog = gl.createProgram();
+		if (!prog) throw new Error('Could not create shader program.');
 		gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, vert));
 		gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, frag));
 		// WebGL2 needs the attribute bound before linking; WebGL1 assigns it during
@@ -123,14 +155,16 @@ export class Renderer {
 			gl.vertexAttribPointer(this.attribLoc, 2, gl.FLOAT, false, 0, 0);
 		}
 
-		this.u = {};
-		for (const name of UNIFORMS) {
-			this.u[name] = gl.getUniformLocation(prog, name);
-		}
+		// Built from UNIFORMS so a uniform added to the shader and forgotten here is
+		// a compile error rather than a silently missing lookup. `Object.fromEntries`
+		// widens the key to `string`, so the record type is asserted back on — the
+		// keys are exactly UNIFORMS by construction.
+		this.u = Object.fromEntries(
+			UNIFORMS.map((name) => [name, gl.getUniformLocation(prog, name)])
+		) as Record<UniformName, WebGLUniformLocation | null>;
 
 		this.imageTex = makeTexture(gl);
 		this.maskTex = makeTexture(gl);
-		/** The source currently resident in imageTex, for upload deduplication. */
 		this._src = null;
 		this.params = { ...DEFAULTS };
 		this.hasImage = false;
@@ -139,8 +173,7 @@ export class Renderer {
 		gl.uniform1i(this.u.uMask, 1);
 	}
 
-	/** @param {HTMLCanvasElement|ImageBitmap|HTMLVideoElement} source */
-	upload(source) {
+	upload(source: TextureSource): void {
 		const gl = this.gl;
 		gl.activeTexture(gl.TEXTURE0);
 		gl.bindTexture(gl.TEXTURE_2D, this.imageTex);
@@ -161,13 +194,13 @@ export class Renderer {
 	 * The live camera path calls `upload` directly, since a video element is
 	 * always new pixels and must never be skipped.
 	 */
-	setImage(source) {
+	setImage(source: TextureSource): void {
 		if (this._src !== source || !this.hasImage) this.upload(source);
 		this.render();
 	}
 
 	/** Uploads the mask layer only when it changed. */
-	setMask(source) {
+	setMask(source: TextureSource): void {
 		const gl = this.gl;
 		gl.activeTexture(gl.TEXTURE1);
 		gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
@@ -175,12 +208,12 @@ export class Renderer {
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
 	}
 
-	setParams(p) {
+	setParams(p: RenderParamsInput): void {
 		this.params = { ...DEFAULTS, ...p };
 	}
 
 	/** Resize the drawing buffer to the element's CSS box at `dpr`. */
-	resize(cssW, cssH, dpr = Math.min(globalThis.devicePixelRatio || 1, 2)) {
+	resize(cssW: number, cssH: number, dpr = Math.min(globalThis.devicePixelRatio || 1, 2)): void {
 		const w = Math.max(1, Math.round(cssW * dpr));
 		const h = Math.max(1, Math.round(cssH * dpr));
 		if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -189,7 +222,7 @@ export class Renderer {
 		}
 	}
 
-	render() {
+	render(): void {
 		const { gl, u, params } = this;
 		if (!this.hasImage) return;
 
@@ -226,11 +259,19 @@ export class Renderer {
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 	}
 
-	dispose() {
+	dispose(): void {
 		const gl = this.gl;
 		gl.deleteTexture(this.imageTex);
 		gl.deleteTexture(this.maskTex);
 		gl.deleteProgram(this.prog);
+		// Hand the context back. Deleting the objects above frees the driver
+		// memory they hold, but the context itself stays live and still counts
+		// against the browser's limit until it is explicitly lost — Chrome on
+		// Android allows far fewer live contexts than desktop, so a stage torn
+		// down and rebuilt a few times could leave the next context creation
+		// failing outright. The extension is optional; where it is missing the
+		// context is simply left to the GC, which is the old behaviour.
+		gl.getExtension('WEBGL_lose_context')?.loseContext();
 	}
 }
 
@@ -246,9 +287,14 @@ export class Renderer {
  * This renders into a reused canvas and hands back a snapshot the caller can
  * paint once with `drawImage`. Sequential use only, which is how it is called.
  */
-let thumb = null;
+let thumb: { canvas: HTMLCanvasElement; renderer: Renderer } | null = null;
 
-export function renderThumbnail(source, params, w, h) {
+export function renderThumbnail(
+	source: TextureSource,
+	params: RenderParamsInput,
+	w: number,
+	h: number
+): HTMLCanvasElement {
 	if (!thumb) {
 		const canvas = document.createElement('canvas');
 		thumb = { canvas, renderer: new Renderer(canvas) };

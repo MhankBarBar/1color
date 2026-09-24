@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * 1color — keep one color in a photo, lose the rest.
 	 *
@@ -10,12 +10,28 @@
 	import AccentTile from './components/AccentTile.svelte';
 	import { dict, locales } from './lib/i18n.js';
 	import { icon } from './lib/icons.js';
-	import { rgbToHex, hexToRgb, inkOn } from './lib/color.js';
+	import { hexToRgb, inkOn } from './lib/color.js';
 	import { loadPhoto, isAccepted } from './lib/image.js';
 	import { Sampler, showcaseAccents } from './lib/analysis.js';
 	import { createLoadGate } from './lib/loadGate.js';
+	import type { LoadedPhoto, LocaleId, PixelSource, Rgb } from './lib/types.js';
 
-	const SAMPLES = [
+	/** A bundled photo offered on the landing page, with the accent to showcase it. */
+	interface Sample {
+		src: string;
+		label: Record<LocaleId, string>;
+		accent: Rgb;
+	}
+
+	/** A showcase accent read from the loaded photo, with its display label. */
+	type Showcase = { key: string; rgb: Rgb; label: string };
+
+	/** The load lifecycle. The stage only offers its drop target once loading has
+	 *  settled, so the first paint does not flash a prompt the boot sample replaces. */
+	type LoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+
+	const SAMPLES: Sample[] = [
 		{
 			src: '/samples/sunflowers.jpg',
 			label: { en: 'Sunflower field', ja: 'ひまわり畑' },
@@ -36,7 +52,7 @@
 	// --- locale ------------------------------------------------------------
 
 	const LOCALE_KEY = '1color:locale';
-	const VALID_LOCALES = locales.map((l) => l.id);
+	const VALID_LOCALES: LocaleId[] = locales.map((l) => l.id);
 
 	/**
 	 * Restore the saved language, falling back to English.
@@ -45,17 +61,17 @@
 	 * sandboxed iframes, and an unreadable preference must not stop the app from
 	 * booting.
 	 */
-	function savedLocale() {
+	function savedLocale(): LocaleId {
 		try {
 			const v = localStorage.getItem(LOCALE_KEY);
-			return VALID_LOCALES.includes(v) ? v : 'en';
+			return v !== null && VALID_LOCALES.includes(v as LocaleId) ? (v as LocaleId) : 'en';
 		} catch {
 			return 'en';
 		}
 	}
 
 	let locale = $state(savedLocale());
-	const t = $derived((key) => dict[locale][key] ?? dict.en[key] ?? key);
+	const t = $derived((key: string): string => dict[locale][key] ?? dict.en[key] ?? key);
 
 	$effect(() => {
 		document.documentElement.lang = locale;
@@ -68,9 +84,9 @@
 
 	// --- photo state -------------------------------------------------------
 
-	let source = $state(null);
-	let sampler = $state(null);
-	let fileInput = $state(null);
+	let source = $state<PixelSource | null>(null);
+	let sampler = $state<Sampler | null>(null);
+	let fileInput = $state<HTMLInputElement | null>(null);
 
 	/**
 	 * Load lifecycle: 'idle' | 'loading' | 'ready' | 'error'.
@@ -82,7 +98,7 @@
 	// Starts as 'loading' rather than 'idle': the boot sample always loads on
 	// mount, so declaring that up front means the very first paint shows the
 	// placeholder instead of flashing a drop target for one frame.
-	let loadState = $state('loading');
+	let loadState = $state<LoadState>('loading');
 	let loadError = $state('');
 
 	/** Guards against an older load landing after a newer one. */
@@ -90,31 +106,33 @@
 
 	// --- accent state ------------------------------------------------------
 
-	let accentHex = $state('#FCC000');
 	let accentInk = $state('#09090A');
-	let coverage = $state(0);
 
 
-	function applyAccent({ hex, coverage: cov }) {
-		accentHex = hex;
+	function applyAccent({ hex }: { hex: string; coverage: number }): void {
 		accentInk = inkOn(hexToRgb(hex));
-		coverage = cov;
 		const root = document.documentElement;
 		root.style.setProperty('--accent', hex);
 		root.style.setProperty('--accent-ink', accentInk);
-		root.style.setProperty('--accent-glow', `rgb(${hexToRgb(hex).r} ${hexToRgb(hex).g} ${hexToRgb(hex).b} / 0.16)`);
+		const rgb = hexToRgb(hex);
+		root.style.setProperty('--accent-glow', `rgb(${rgb.r} ${rgb.g} ${rgb.b} / 0.16)`);
 	}
 
 	/** Adopt a decoded blob, but only if `token` is still the newest load. */
-	async function adopt(blob, token, { scroll = true } = {}) {
+	async function adopt(
+		blob: Blob,
+		token: number,
+		{ scroll = true }: { scroll?: boolean } = {}
+	): Promise<void> {
 		loadState = 'loading';
 		loadError = '';
 		try {
-			const photo = await loadPhoto(blob);
+			const photo: LoadedPhoto = await loadPhoto(blob);
 			if (!loadGate.isCurrent(token)) {
 				// Superseded while decoding. Release the pixels rather than
-				// leaving a large ImageBitmap for the GC to find later.
-				photo.source?.close?.();
+				// leaving a large ImageBitmap for the GC to find later. Only an
+				// ImageBitmap owns pixels outside the JS heap.
+				if (photo.source instanceof ImageBitmap) photo.source.close();
 				return;
 			}
 			source = photo.source;
@@ -133,7 +151,10 @@
 		}
 	}
 
-	async function openBlob(blob, opts) {
+	async function openBlob(
+		blob: Blob | null | undefined,
+		opts?: { scroll?: boolean }
+	): Promise<void> {
 		if (!blob) return;
 		if (!isAccepted(blob)) {
 			loadState = 'error';
@@ -143,7 +164,7 @@
 		return adopt(blob, loadGate.begin(), opts);
 	}
 
-	async function openSample(sample) {
+	async function openSample(sample: { src: string }): Promise<void> {
 		const token = loadGate.begin();
 		loadState = 'loading';
 		loadError = '';
@@ -169,14 +190,16 @@
 	});
 
 	// Clipboard paste, anywhere on the page.
-	function onPaste(e) {
-		const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
+	function onPaste(e: ClipboardEvent): void {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		const item = [...items].find((i) => i.type.startsWith('image/'));
 		if (item) openBlob(item.getAsFile());
 	}
 
 	// --- showcase ----------------------------------------------------------
 
-	const showcase = $derived.by(() => {
+	const showcase = $derived.by((): Showcase[] => {
 		if (!sampler) return [];
 		return showcaseAccents(sampler.palette).map((a) => ({
 			...a,
@@ -184,11 +207,9 @@
 		}));
 	});
 
-	const samples = $derived(
-		SAMPLES.map((s) => ({ src: s.src, label: s.label[locale] }))
-	);
+	const samples = $derived(SAMPLES.map((s) => ({ src: s.src, label: s.label[locale] })));
 
-	function scrollTo(id) {
+	function scrollTo(id: string): void {
 		document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 	}
 </script>

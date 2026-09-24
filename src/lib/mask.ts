@@ -6,28 +6,38 @@
 // All geometry is stored in normalised image coordinates (0..1, y down) so it
 // survives canvas resizes and export at a different resolution.
 
+import type { MaskSpec, Point, Shape, ShapeKind, Stroke } from './types.js';
+
 const MASK_MAX_EDGE = 1536;
 
 export class MaskLayer {
-	constructor(imgW, imgH) {
+	readonly w: number;
+	readonly h: number;
+	readonly canvas: HTMLCanvasElement;
+	readonly ctx: CanvasRenderingContext2D;
+
+	constructor(imgW: number, imgH: number) {
 		const scale = Math.min(1, MASK_MAX_EDGE / Math.max(imgW, imgH));
 		this.w = Math.max(2, Math.round(imgW * scale));
 		this.h = Math.max(2, Math.round(imgH * scale));
 		this.canvas = document.createElement('canvas');
 		this.canvas.width = this.w;
 		this.canvas.height = this.h;
-		this.ctx = this.canvas.getContext('2d', { willReadFrequently: false });
+		// A canvas we just created always has a 2D context: `getContext` returns
+		// null only for a context id the element does not support, and '2d' is
+		// never that.
+		this.ctx = this.canvas.getContext('2d', { willReadFrequently: false })!;
 		this.clear();
 	}
 
-	clear() {
+	clear(): void {
 		this.ctx.globalCompositeOperation = 'source-over';
 		this.ctx.fillStyle = '#000';
 		this.ctx.fillRect(0, 0, this.w, this.h);
 	}
 
 	/** Repaint every shape from scratch. Used when a transform changes. */
-	drawAll({ shape, lasso, strokes }) {
+	drawAll({ shape = null, lasso = [], strokes = [] }: Partial<MaskSpec>): void {
 		this.clear();
 		const ctx = this.ctx;
 		ctx.fillStyle = '#fff';
@@ -61,7 +71,7 @@ export class MaskLayer {
 	}
 
 	/** Incremental paint: one segment, no full repaint. */
-	strokeSegment(a, b, size) {
+	strokeSegment(a: Point, b: Point, size: number): void {
 		const ctx = this.ctx;
 		ctx.strokeStyle = '#fff';
 		ctx.lineCap = 'round';
@@ -73,7 +83,7 @@ export class MaskLayer {
 		ctx.stroke();
 	}
 
-	_strokePath(pts, size) {
+	_strokePath(pts: Stroke['pts'] | undefined, size: number): void {
 		if (!pts || pts.length < 2) return;
 		const ctx = this.ctx;
 		ctx.lineWidth = Math.max(1, size * Math.max(this.w, this.h));
@@ -88,7 +98,7 @@ export class MaskLayer {
 
 /** Normalised distance from a point to a shape's outline, in units of the
  *  shape's own half-extent. <1 means inside. */
-export function shapeHitTest(shape, px, py) {
+export function shapeHitTest(shape: Shape, px: number, py: number): number {
 	const dx = px - shape.cx;
 	const dy = py - shape.cy;
 	const cos = Math.cos(-(shape.rot || 0));
@@ -103,13 +113,15 @@ export function shapeHitTest(shape, px, py) {
 
 export const SHAPE_MIN = 0.04;
 
-export function makeShape(kind, cx = 0.5, cy = 0.5) {
+export function makeShape(kind: ShapeKind, cx = 0.5, cy = 0.5): Shape {
 	const s = kind === 'rect' ? 0.34 : 0.3;
-	return { kind, cx, cy, w: s, h: s, rot: 0 };
+	// The parameter stays the full tool union so a caller can hand over the active
+	// tool; `shapeForTool` is what guards the point-based kinds out.
+	return { kind: kind as Shape['kind'], cx, cy, w: s, h: s, rot: 0 };
 }
 
 /** Tools that are drawn as a parametric shape rather than a raster mask. */
-export const SHAPE_TOOLS = ['circle', 'rect'];
+export const SHAPE_TOOLS: readonly ShapeKind[] = ['circle', 'rect'];
 
 /**
  * The starting shape for a tool, or null for tools that do not use one.
@@ -119,6 +131,6 @@ export const SHAPE_TOOLS = ['circle', 'rect'];
  * any non-rect shape as an ellipse, so a stray shape makes the lasso tool draw a
  * circle over the photo. Centralised here so every caller gets the same answer.
  */
-export function shapeForTool(kind) {
+export function shapeForTool(kind: ShapeKind): Shape | null {
 	return SHAPE_TOOLS.includes(kind) ? makeShape(kind, 0.5, 0.5) : null;
 }

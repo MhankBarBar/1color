@@ -65,27 +65,38 @@ npm test
 The suite covers the color matcher, export geometry, the mask layer, the shader
 wiring, the stage overlay's CSS contract, and the load ordering guard.
 
+Types are checked separately, because `tsc` cannot read a `.svelte` file:
+
+```bash
+npm run typecheck
+```
+
+That runs `tsc` over the app code and the tests, then `svelte-check` over the
+components. It needs TypeScript 6: `svelte-check` and `svelte2tsx` both cap their
+peer range at 6, so TypeScript 7 leaves every component unchecked.
+
 Two invariants are worth knowing about, because they are easy to break:
 
-- `src/lib/color.js` is a **CPU mirror** of the fragment shader in
-  `src/lib/shaders.js`. The tests assert the two agree numerically. Change the
-  shader, and you must update the transcription in `src/lib/color.test.js`.
+- `src/lib/color.ts` is a **CPU mirror** of the fragment shader in
+  `src/lib/shaders.ts`. The tests assert the two agree numerically. Change the
+  shader, and you must update the transcription in `src/lib/color.test.ts`.
 - The shader ships in **two dialects**, ES 3.00 for WebGL2 and ES 1.00 for
-  WebGL1. `src/lib/gl.test.js` checks both, so neither device class can silently
+  WebGL1. `src/lib/gl.test.ts` checks both, so neither device class can silently
   lose a control.
 
 ## How it works
 
 | File | Role |
 | --- | --- |
-| `src/lib/shaders.js` | The fragment shader, in both ES 3.00 and ES 1.00 dialects. |
-| `src/lib/gl.js` | Renderer: context setup, WebGL2 to WebGL1 fallback, draw calls. |
-| `src/lib/color.js` | CPU mirror of the shader math, plus hex, contrast, and palette utilities. |
-| `src/lib/mask.js` | The region mask layer and shape hit-testing. |
-| `src/lib/analysis.js` | Reads the photo: tap sampling, coverage, the photo's own palette. |
-| `src/lib/export.js` | Full-resolution export: frame, margin, ratio, and overlays. |
-| `src/lib/loadGate.js` | Discards a slow load that would otherwise overwrite a newer one. |
-| `src/lib/i18n.js` | English (default) and Japanese strings. |
+| `src/lib/shaders.ts` | The fragment shader, in both ES 3.00 and ES 1.00 dialects. |
+| `src/lib/gl.ts` | Renderer: context setup, WebGL2 to WebGL1 fallback, draw calls. |
+| `src/lib/color.ts` | CPU mirror of the shader math, plus hex, contrast, and palette utilities. |
+| `src/lib/mask.ts` | The region mask layer and shape hit-testing. |
+| `src/lib/analysis.ts` | Reads the photo: tap sampling, coverage, the photo's own palette. |
+| `src/lib/export.ts` | Full-resolution export: frame, margin, ratio, and overlays. |
+| `src/lib/loadGate.ts` | Discards a slow load that would otherwise overwrite a newer one. |
+| `src/lib/i18n.ts` | English (default) and Japanese strings. |
+| `src/lib/types.ts` | The shapes that cross module boundaries. |
 | `src/components/` | `Stage` (canvas and region editing), `Editor` (tool panels), `Live` (camera). |
 
 The color match is a **hue** distance computed in linear light, gated by

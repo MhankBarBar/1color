@@ -75,7 +75,10 @@ uniform float uBypass;
 uniform vec4 uCrop;
 `;
 
-const MAIN = (sampleFn, writeFn) => `
+const MAIN = (
+	sampleFn: 'texture' | 'texture2D',
+	writeFn: (expr: string) => string
+) => `
 void main() {
 	// The ratio crops rather than distorts: uCrop is the kept rect in normalised
 	// photo units. Sampling the image and the mask through the same rect keeps
@@ -129,7 +132,7 @@ ${UNIFORM_BLOCK}
 in vec2 vUv;
 out vec4 outColor;
 ${BODY}
-${MAIN('texture', (expr) => `outColor = ${expr}`)}`;
+${MAIN('texture', (expr: string): string => `outColor = ${expr}`)}`;
 
 // --- ES 1.00 / WebGL1 -----------------------------------------------------
 
@@ -148,7 +151,7 @@ precision mediump float;
 ${UNIFORM_BLOCK}
 varying vec2 vUv;
 ${BODY}
-${MAIN('texture2D', (expr) => `gl_FragColor = ${expr}`)}`;
+${MAIN('texture2D', (expr: string): string => `gl_FragColor = ${expr}`)}`;
 
 /** Every uniform the fragment shader declares, in both dialects. The Renderer
  *  looks each of these up by name, so a name here that is missing there is a
@@ -165,7 +168,11 @@ export const UNIFORMS = [
 	'uMaskOn',
 	'uBypass',
 	'uCrop'
-];
+] as const;
+
+/** The name of one shader uniform. Derived from `UNIFORMS` so the renderer's
+ *  lookup table and the shader's declarations cannot drift apart silently. */
+export type UniformName = (typeof UNIFORMS)[number];
 
 /** Exported so the tests can check the shaders against the JS wiring without a
  *  GL context. `UNIFORMS` is the contract between the two. */

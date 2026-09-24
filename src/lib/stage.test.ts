@@ -23,7 +23,7 @@ const css = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
 const stage = readFileSync(new URL('../components/Stage.svelte', import.meta.url), 'utf8');
 
 /** The declaration block for a class, without its selector. */
-function rule(sel) {
+function rule(sel: string): string {
 	const m = new RegExp(`(?:^|\\n)\\s*\\.${sel}\\s*\\{([^}]*)\\}`).exec(css);
 	assert.ok(m, `no .${sel} rule in app.css`);
 	return m[1];

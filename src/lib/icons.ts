@@ -1,9 +1,17 @@
 // Inline icon set. Small stroke icons at 24px, matching the app's control row:
 // a half-filled circle for Accent, a reticle for Range, a contrast disc for
 // Monochrome.
+//
+// Every icon carries explicit width/height as well as a viewBox. A `viewBox`
+// alone gives an SVG no intrinsic size, so inside a grid or flex item the used
+// size comes from the layout — and WebKit resolves `max-width: 100%` on such an
+// element to zero, collapsing the icon entirely. That is why the Save, Share,
+// and Compare buttons rendered as empty circles on Safari and Chrome on iOS
+// while the icons that happened to have a CSS width were fine.
+const ICON_PX = 24;
 
-const S = (body, extra = '') =>
-	`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ${extra} aria-hidden="true">${body}</svg>`;
+const S = (body: string, extra = ''): string =>
+	`<svg width="${ICON_PX}" height="${ICON_PX}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ${extra} aria-hidden="true">${body}</svg>`;
 
 export const icons = {
 	accent: S(
@@ -35,5 +43,8 @@ export const icons = {
 	spark: S('<path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M6 6l2.8 2.8M15.2 15.2 18 18M18 6l-2.8 2.8M8.8 15.2 6 18"/>')
 };
 
+/** Every icon this app draws, by name. */
+export type IconName = keyof typeof icons;
+
 /** Returns raw SVG markup for {@html}. */
-export const icon = (name) => icons[name] || icons.accent;
+export const icon = (name: IconName): string => icons[name] || icons.accent;

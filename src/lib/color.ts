@@ -1,9 +1,11 @@
 // Color math. Everything here mirrors the GLSL in gl.js exactly — the CPU copy is
 // used for the "kept" readout and the live match preview, so the two must agree.
 
-export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+import type { Hsv, Rgb } from './types.js';
 
-export function hexToRgb(hex) {
+export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
+
+export function hexToRgb(hex: string): Rgb {
 	let h = String(hex).trim().replace(/^#/, '');
 	if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
 	const n = Number.parseInt(h, 16);
@@ -11,7 +13,7 @@ export function hexToRgb(hex) {
 	return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
-export function rgbToHex({ r, g, b }) {
+export function rgbToHex({ r, g, b }: Rgb): string {
 	return (
 		'#' +
 		[r, g, b]
@@ -23,15 +25,15 @@ export function rgbToHex({ r, g, b }) {
 
 // --- perceptual helpers ---------------------------------------------------
 
-const toLinear = (c) => {
+const toLinear = (c: number): number => {
 	c /= 255;
 	return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 };
 
-export const relativeLuminance = ({ r, g, b }) =>
+export const relativeLuminance = ({ r, g, b }: Rgb): number =>
 	0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
 
-export function contrastRatio(a, b) {
+export function contrastRatio(a: Rgb, b: Rgb): number {
 	const la = relativeLuminance(a);
 	const lb = relativeLuminance(b);
 	const hi = Math.max(la, lb);
@@ -39,41 +41,32 @@ export function contrastRatio(a, b) {
 	return (hi + 0.05) / (lo + 0.05);
 }
 
-const INK_DARK = { r: 8, g: 8, b: 10 };
-const INK_LIGHT = { r: 246, g: 246, b: 248 };
+const INK_DARK: Rgb = { r: 8, g: 8, b: 10 };
+const INK_LIGHT: Rgb = { r: 246, g: 246, b: 248 };
 
 /** Black or white, whichever reads better on `rgb`. */
-export const inkOn = (rgb) =>
+export const inkOn = (rgb: Rgb): string =>
 	contrastRatio(rgb, INK_DARK) >= contrastRatio(rgb, INK_LIGHT)
 		? rgbToHex(INK_DARK)
 		: rgbToHex(INK_LIGHT);
 
-const luma = ({ r, g, b }) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-
-const smoothstep = (e0, e1, x) => {
+const smoothstep = (e0: number, e1: number, x: number): number => {
 	const t = clamp((x - e0) / (e1 - e0), 0, 1);
 	return t * t * (3 - 2 * t);
 };
 
-/** HSV computed in linear light. `h` is a fraction of the circle; `s`, `v`, and
- *  `d` (the raw mx-mn spread) are 0..1. Linear light keeps the hue of a shadowed
- *  color identical to the hue of its highlight, which is the whole point:
- *  gamma-encoded hue shifts as a color darkens, so a sunflower's shaded petals
- *  would drift away from its lit ones. */
-function hsv({ r, g, b }) {
-	const t = hsvInto(r, g, b, {});
-	return { h: t.h, s: t.s, v: t.v, d: t.d };
-}
-
 /**
- * Numeric core of `hsv`, writing into `out` instead of allocating.
+ * Numeric core of the HSV conversion, writing into `out` instead of allocating.
  *
  * The coverage scan calls this per pixel on every slider frame. Returning an
  * array or object here would churn tens of thousands of short-lived values per
  * frame, which is exactly the garbage that made dragging a slider stutter — so
  * this fills a caller-provided record instead.
+ *
+ * The allocating wrapper that used to sit beside this was dead: nothing called
+ * it, and only this core is ever used. TypeScript found that on the port.
  */
-function hsvInto(r, g, b, out) {
+function hsvInto(r: number, g: number, b: number, out: Hsv): Hsv {
 	const R = toLinear(r);
 	const G = toLinear(g);
 	const B = toLinear(b);
@@ -118,9 +111,9 @@ const SAT_HI = 0.25;
  * When the target itself is near-neutral there is no hue to match, so this
  * degrades to a brightness match — tapping a gray sky keeps the grays.
  */
-export function accentDistance(a, b) {
-	const A = {};
-	const B = {};
+export function accentDistance(a: Rgb, b: Rgb): number {
+	const A: Hsv = { h: 0, s: 0, v: 0, d: 0 };
+	const B: Hsv = { h: 0, s: 0, v: 0, d: 0 };
 	return distRgb(a.r, a.g, a.b, b, A, B);
 }
 
@@ -131,9 +124,16 @@ export function accentDistance(a, b) {
  * coverage scan can run without allocating. They are optional: omit them and
  * this allocates, which is fine for the one-off calls outside the hot loop.
  */
-function distRgb(r, g, b, target, scratchA, scratchB) {
-	const A = hsvInto(r, g, b, scratchA || {});
-	const B = hsvInto(target.r, target.g, target.b, scratchB || {});
+function distRgb(
+	r: number,
+	g: number,
+	b: number,
+	target: Rgb,
+	scratchA?: Hsv,
+	scratchB?: Hsv
+): number {
+	const A = hsvInto(r, g, b, scratchA || { h: 0, s: 0, v: 0, d: 0 });
+	const B = hsvInto(target.r, target.g, target.b, scratchB || { h: 0, s: 0, v: 0, d: 0 });
 
 	if (B.s < NEUTRAL_SAT) {
 		const dl = A.v - B.v;
@@ -152,11 +152,11 @@ function distRgb(r, g, b, target, scratchA, scratchB) {
 // Slider 0–100 -> distance. Distance is normalised hue (180 degrees apart = 1),
 // so width 30 holds a window of about +/-20 degrees and width 100 opens to
 // roughly +/-57, which is as far as a single-hue selector should reasonably go.
-export const widthToDist = (w) => 0.015 + (w / 100) * 0.3;
-export const featherToDist = (f) => (f / 100) * 0.16;
+export const widthToDist = (w: number): number => 0.015 + (w / 100) * 0.3;
+export const featherToDist = (f: number): number => (f / 100) * 0.16;
 
 /** Fraction of this pixel that keeps its color. 1 = full color, 0 = monochrome. */
-export function matchAlpha(px, target, width, feather) {
+export function matchAlpha(px: Rgb, target: Rgb, width: number, feather: number): number {
 	return matchAlphaRgb(px.r, px.g, px.b, target, widthToDist(width), featherToDist(feather));
 }
 
@@ -168,7 +168,16 @@ export function matchAlpha(px, target, width, feather) {
  * thresholds keeps it allocation-free — the object-per-pixel version churned
  * through roughly 66,000 short-lived objects per frame.
  */
-export function matchAlphaRgb(r, g, b, target, e0, featherDist, scratchA, scratchB) {
+export function matchAlphaRgb(
+	r: number,
+	g: number,
+	b: number,
+	target: Rgb,
+	e0: number,
+	featherDist: number,
+	scratchA?: Hsv,
+	scratchB?: Hsv
+): number {
 	const d = distRgb(r, g, b, target, scratchA, scratchB);
 	const e1 = e0 + (featherDist > 1e-4 ? featherDist : 1e-4);
 	if (d <= e0) return 1;
@@ -179,6 +188,14 @@ export function matchAlphaRgb(r, g, b, target, e0, featherDist, scratchA, scratc
 
 // --- palettes -------------------------------------------------------------
 
+/** One quantisation bucket while it is being accumulated. */
+interface Bucket {
+	n: number;
+	r: number;
+	g: number;
+	b: number;
+}
+
 /**
  * Quantize to 5 bits/channel, average each bucket, then rank.
  *
@@ -188,8 +205,8 @@ export function matchAlphaRgb(r, g, b, target, e0, featherDist, scratchA, scratc
  * the top slot. Absolute chroma keeps vivid colors on top and lets a large
  * neutral region still appear, ranked below them.
  */
-export function paletteFromImageData(data, count = 8) {
-	const buckets = new Map();
+export function paletteFromImageData(data: Uint8ClampedArray, count = 8): Rgb[] {
+	const buckets = new Map<number, Bucket>();
 	for (let i = 0; i < data.length; i += 4) {
 		if (data[i + 3] < 128) continue;
 		const r = data[i];
@@ -205,7 +222,7 @@ export function paletteFromImageData(data, count = 8) {
 	}
 
 	const NEUTRAL_FLOOR = 0.06;
-	const ranked = [];
+	const ranked: { c: Rgb; score: number; chroma: number }[] = [];
 	for (const e of buckets.values()) {
 		const c = { r: e.r / e.n, g: e.g / e.n, b: e.b / e.n };
 		const chroma = (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;
@@ -213,7 +230,7 @@ export function paletteFromImageData(data, count = 8) {
 	}
 	ranked.sort((a, b) => b.score - a.score);
 
-	const out = [];
+	const out: Rgb[] = [];
 	for (const e of ranked) {
 		if (out.length >= count) break;
 		if (out.some((o) => Math.hypot(o.r - e.c.r, o.g - e.c.g, o.b - e.c.b) < 44)) continue;
@@ -227,16 +244,16 @@ export function paletteFromImageData(data, count = 8) {
  * a color, and bright enough to read as a swatch. Falls back to the top entry
  * when the photo is genuinely monochrome.
  */
-export function suggestedAccent(palette) {
+export function suggestedAccent(palette: Rgb[]): Rgb {
 	const usable = palette.filter((c) => {
 		const chroma = (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;
-		const luma = (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
-		return chroma > 0.25 && luma > 0.15 && luma < 0.92;
+		const l = (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
+		return chroma > 0.25 && l > 0.15 && l < 0.92;
 	});
 	return usable[0] || palette[0] || { r: 252, g: 192, b: 0 };
 }
 
-export function pushRecent(list, rgb, max = 8) {
+export function pushRecent(list: Rgb[], rgb: Rgb, max = 8): Rgb[] {
 	const hex = rgbToHex(rgb);
 	const next = [rgb, ...list.filter((c) => rgbToHex(c) !== hex)];
 	return next.slice(0, max);

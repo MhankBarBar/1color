@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * The editor, laid out the way the iOS app is: the photo is the hero, a
 	 * compact panel sits directly beneath it, and the mode switcher is a row of
@@ -10,28 +10,54 @@
 	 */
 	import Stage from './Stage.svelte';
 	import { icon } from '../lib/icons.js';
-	import { rgbToHex, hexToRgb, inkOn, pushRecent } from '../lib/color.js';
+	import { rgbToHex, pushRecent } from '../lib/color.js';
 	import { shapeForTool, SHAPE_TOOLS } from '../lib/mask.js';
 	import { exportComposite, downloadBlob, shareBlob, RATIOS, overlayMinMargin } from '../lib/export.js';
+	import type { ExportResult } from '../lib/export.js';
+	import type { Sampler } from '../lib/analysis.js';
+	import type {
+		Align,
+		FrameId,
+		PixelSource,
+		Point,
+		QualityId,
+		Rgb,
+		Size,
+		Shape,
+		ShapeKind,
+		Stroke
+	} from '../lib/types.js';
+
+	/** The four control panels, mirroring the app's mode row plus its output screen. */
+	type Mode = 'accent' | 'range' | 'mono' | 'output';
+
+	/** Whether the region tools apply to the whole photo or a drawn part of it. */
+	type Scope = 'all' | 'part';
 
 	let {
 		source = null,
 		sampler = null,
 		loading = false,
-		t = (k) => k,
+		t = (k: string) => k,
 		onopen = () => {},
-		onsample = () => {},
-		onaccent = () => {}
+		onaccent = (_a: { hex: string; coverage: number }) => {}
+	}: {
+		source?: PixelSource | null;
+		sampler?: Sampler | null;
+		loading?: boolean;
+		t?: (key: string) => string;
+		onopen?: () => void;
+		onaccent?: (accent: { hex: string; coverage: number }) => void;
 	} = $props();
 
 	// --- edit state --------------------------------------------------------
 
-	let mode = $state('accent');
-	let scope = $state('all');
-	let shapeKind = $state('circle');
-	let shape = $state(null);
-	let lasso = $state([]);
-	let strokes = $state([]);
+	let mode = $state<Mode>('accent');
+	let scope = $state<Scope>('all');
+	let shapeKind = $state<ShapeKind>('circle');
+	let shape = $state<Shape | null>(null);
+	let lasso = $state<Point[]>([]);
+	let strokes = $state<Stroke[]>([]);
 	let brushSize = $state(0.08);
 
 	/**
@@ -44,20 +70,20 @@
 	let brushHint = $state(false);
 	let brushHintTimer = 0;
 
-	function showBrushHint() {
+	function showBrushHint(): void {
 		brushHint = true;
 		clearTimeout(brushHintTimer);
 		brushHintTimer = setTimeout(() => (brushHint = false), 900);
 	}
 
-	function hideBrushHint() {
+	function hideBrushHint(): void {
 		clearTimeout(brushHintTimer);
 		brushHint = false;
 	}
 
 	$effect(() => () => clearTimeout(brushHintTimer));
 
-	let target = $state({ r: 252, g: 192, b: 0 });
+	let target = $state<Rgb>({ r: 252, g: 192, b: 0 });
 	let width = $state(30);
 	let feather = $state(40);
 
@@ -65,17 +91,17 @@
 	let tone = $state(0);
 	let contrast = $state(0);
 
-	let frame = $state('none');
+	let frame = $state<FrameId>('none');
 	let customFrame = $state('#F6F6F8');
 	let margin = $state(50);
 	let ratio = $state('original');
-	let quality = $state('std');
-	let align = $state('left');
+	let quality = $state<QualityId>('std');
+	let align = $state<Align>('left');
 	let showSwatch = $state(false);
 	let showCode = $state(true);
 	let showMix = $state(false);
 
-	let recent = $state([]);
+	let recent = $state<Rgb[]>([]);
 	let busy = $state(false);
 	let toast = $state('');
 	/** Lets the photo take the full card when you just want to look at it. */
@@ -102,21 +128,21 @@
 		}
 	});
 
-	const PRESETS = [
+	const PRESETS: Array<{ id: number; key: string }> = [
 		{ id: 0, key: 'mono.standard' },
 		{ id: 1, key: 'mono.soft' },
 		{ id: 2, key: 'mono.deep' },
 		{ id: 3, key: 'mono.high' }
 	];
 
-	const SHAPES = [
+	const SHAPES: Array<{ id: ShapeKind; key: string; icon: 'circle' | 'square' | 'lasso' | 'brush' }> = [
 		{ id: 'circle', key: 'range.circle', icon: 'circle' },
 		{ id: 'rect', key: 'range.square', icon: 'square' },
 		{ id: 'lasso', key: 'range.lasso', icon: 'lasso' },
 		{ id: 'brush', key: 'range.brush', icon: 'brush' }
 	];
 
-	const FRAMES = [
+	const FRAMES: Array<[FrameId, string]> = [
 		['none', 'out.frame.none'],
 		['white', 'out.frame.white'],
 		['black', 'out.frame.black'],
@@ -125,14 +151,14 @@
 	];
 
 	// Where the swatch / code / mix block sits across the band.
-	const ALIGNS = [
+	const ALIGNS: Array<[Align, string]> = [
 		['left', 'out.align.left'],
 		['center', 'out.align.center'],
 		['right', 'out.align.right']
 	];
 
 	// Four modes, mirroring the app's mode row plus its output screen.
-	const MODES = [
+	const MODES: Array<{ id: Mode; key: string; icon: 'accent' | 'range' | 'mono' | 'output' }> = [
 		{ id: 'accent', key: 'panel.accent', icon: 'accent' },
 		{ id: 'range', key: 'panel.range', icon: 'range' },
 		{ id: 'mono', key: 'panel.mono', icon: 'mono' },
@@ -154,6 +180,11 @@
 	const hex = $derived(rgbToHex(target));
 
 	const coverage = $derived.by(() => (sampler ? sampler.coverage(target, width, feather) : 0));
+
+	/** The active mode's entry. Falls back to the first, so the panel header always
+	 *  has an icon and a label — the inline `find` returned a maybe-undefined and
+	 *  the markup dereferenced it twice. */
+	const activeMode = $derived(MODES.find((m) => m.id === mode) ?? MODES[0]);
 
 	const palette = $derived(sampler ? sampler.palette : []);
 	const ratioList = $derived([{ id: 'original' }, ...RATIOS.slice(1)]);
@@ -193,7 +224,7 @@
 	 * overlay renders any non-rect shape as an ellipse) and discarded the region
 	 * you had just drawn.
 	 */
-	let seededFor = null;
+	let seededFor: Sampler | null = null;
 	$effect(() => {
 		const s = sampler;
 		if (!s || seededFor === s) return;
@@ -210,24 +241,28 @@
 	// which the overlay renders as an ellipse.
 	$effect(() => {
 		if (!shape || !SHAPE_TOOLS.includes(shapeKind)) return;
+		// `SHAPE_TOOLS` holds only the two parametric tools, so this narrowing is
+		// real: lasso and brush never reach here, and a `Shape` can only be one of
+		// these two kinds.
+		if (shapeKind !== 'circle' && shapeKind !== 'rect') return;
 		if ((shapeKind === 'rect') !== (shape.kind === 'rect')) shape = { ...shape, kind: shapeKind };
 	});
 
 	// --- actions -----------------------------------------------------------
 
-	function pick(p) {
+	function pick(p: Point): void {
 		if (!sampler) return;
 		const rgb = sampler.pickAt(p.x, p.y);
 		target = rgb;
 		recent = pushRecent(recent, rgb, 8);
 	}
 
-	function setAccent(rgb) {
+	function setAccent(rgb: Rgb): void {
 		target = rgb;
 		recent = pushRecent(recent, rgb, 8);
 	}
 
-	function chooseShape(id) {
+	function chooseShape(id: ShapeKind): void {
 		shapeKind = id;
 		lasso = [];
 		strokes = [];
@@ -235,13 +270,13 @@
 		shape = shapeForTool(id);
 	}
 
-	function clearRegion() {
+	function clearRegion(): void {
 		shape = null;
 		lasso = [];
 		strokes = [];
 	}
 
-	function reset() {
+	function reset(): void {
 		width = 30;
 		feather = 40;
 		tone = 0;
@@ -262,16 +297,17 @@
 		toast = '';
 	}
 
-	function flash(message) {
+	function flash(message: string): void {
 		toast = message;
 		setTimeout(() => {
 			if (toast === message) toast = '';
 		}, 2200);
 	}
 
-	async function build() {
+	async function build(): Promise<ExportResult> {
+		if (!source) throw new Error('Nothing to export.');
 		return exportComposite({
-			source,
+			source: source as PixelSource & Size,
 			params,
 			maskSpec: { shape, lasso, strokes },
 			frame,
@@ -287,7 +323,7 @@
 		});
 	}
 
-	async function save() {
+	async function save(): Promise<void> {
 		if (!source || busy) return;
 		busy = true;
 		try {
@@ -296,13 +332,13 @@
 			flash(t('out.saved'));
 		} catch (err) {
 			console.error(err);
-			flash(t('stage.error'));
+			flash(t('out.failed'));
 		} finally {
 			busy = false;
 		}
 	}
 
-	async function share() {
+	async function share(): Promise<void> {
 		if (!source || busy) return;
 		busy = true;
 		try {
@@ -311,7 +347,7 @@
 			if (how !== 'cancelled') flash(t('out.shared'));
 		} catch (err) {
 			console.error(err);
-			flash(t('stage.error'));
+			flash(t('out.failed'));
 		} finally {
 			busy = false;
 		}
@@ -388,7 +424,6 @@
 			onstroke={(s) => (strokes = s)}
 			ondropfile={onopen}
 			onbrowse={onopen}
-			onsample={onsample}
 		/>
 	</div>
 
@@ -418,8 +453,8 @@
 {#if panelOpen}
 		<div class="panel">
 			<button class="panel__head" onclick={() => (panelOpen = false)} aria-expanded="true">
-				<span class="panel__icon" aria-hidden="true">{@html icon(MODES.find((m) => m.id === mode).icon)}</span>
-				<span class="panel__title">{t(MODES.find((m) => m.id === mode).key)}</span>
+				<span class="panel__icon" aria-hidden="true">{@html icon(activeMode.icon)}</span>
+				<span class="panel__title">{t(activeMode.key)}</span>
 				<span class="panel__chevron" aria-hidden="true">{@html icon('chevronDown')}</span>
 			</button>
 
@@ -620,7 +655,7 @@
 		</div>
 	{:else}
 		<button class="panel__collapsed" onclick={() => (panelOpen = true)}>
-			{t(MODES.find((m) => m.id === mode).key)}
+			{t(activeMode.key)}
 		</button>
 	{/if}
 </div>

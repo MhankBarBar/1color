@@ -4,7 +4,9 @@
 // what a control already says, and no marketing sentences. Anything that only
 // repeated another string was deleted rather than translated twice.
 
-export const dict = {
+import type { Dict, Locale, LocaleId } from './types.js';
+
+export const dict: Record<LocaleId, Dict> = {
 	en: {
 		'nav.editor': 'Editor',
 		'nav.accents': 'Colors',
@@ -75,6 +77,7 @@ export const dict = {
 		'out.share': 'Share',
 		'out.saved': 'Saved',
 		'out.shared': 'Shared',
+		'out.failed': 'Could not build the image. Try a smaller size, or reload the page.',
 		'out.reset': 'Reset',
 
 		'compare.toggle': 'Compare with the original',
@@ -173,6 +176,7 @@ export const dict = {
 		'out.share': '共有',
 		'out.saved': '保存しました',
 		'out.shared': '共有しました',
+		'out.failed': '画像を作成できませんでした。サイズを小さくするか、ページを再読み込みしてください。',
 		'out.reset': 'リセット',
 
 		'compare.toggle': '元の写真と比較',
@@ -202,7 +206,7 @@ export const dict = {
 	}
 };
 
-export const locales = [
+export const locales: Locale[] = [
 	{ id: 'en', label: 'EN' },
 	{ id: 'ja', label: '日本語' }
 ];

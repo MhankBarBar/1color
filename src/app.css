@@ -337,6 +337,13 @@ svg {
 	opacity: 0.8;
 }
 
+/* The hint's icon span is sized inline at 15px; the SVG inside must follow it
+   rather than keep its own 24px intrinsic size. */
+.hero__hint span svg {
+	width: 15px;
+	height: 15px;
+}
+
 /* --- buttons ------------------------------------------------------------- */
 
 .btn {
@@ -612,6 +619,21 @@ svg {
 .panel__chevron {
 	margin-left: auto;
 	color: var(--text-faint);
+}
+
+.panel__icon svg,
+.panel__chevron svg {
+	width: 100%;
+	height: 100%;
+}
+
+/* Icons are injected with {@html}, so Svelte cannot see them and strips any
+   `svg` rule declared inside a component as unused. Rules for them have to live
+   here, in the global sheet. `.mode__disc svg` and `.shape__disc svg` were
+   always here for that reason. */
+.iconbtn svg {
+	width: 21px;
+	height: 21px;
 }
 
 .panel__body {
@@ -991,6 +1013,8 @@ svg {
 }
 
 .notice svg {
+	width: 18px;
+	height: 18px;
 	flex: none;
 	margin-top: 2px;
 	color: var(--accent);
@@ -1099,6 +1123,13 @@ svg {
 .live__video {
 	opacity: 0;
 	pointer-events: none;
+}
+
+/* The idle camera mark. Its span is already fixed at 34px in the markup, so the
+   icon fills that rather than keeping its own intrinsic size. */
+.live__idle > span svg {
+	width: 100%;
+	height: 100%;
 }
 
 .live__idle {

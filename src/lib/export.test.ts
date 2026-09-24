@@ -11,22 +11,149 @@ import {
 	frameHexFor,
 	framePad,
 	composeGeometry,
+	exportComposite,
+	MAX_EXPORT_EDGE,
+	MAX_EXPORT_AREA,
 	cropRect,
 	drawOverlayBlock,
 	overlayMinMargin,
-	RATIOS
+	RATIOS,
+	type ComposeInput
 } from './export.js';
 import { makeShape, shapeHitTest, SHAPE_MIN } from './mask.js';
 import { dict, locales } from './i18n.js';
+import type { Align, FrameId, Geometry, PixelSource, QualityId, Size } from './types.js';
 
-const approx = (a, b, tol = 0.01) => Math.abs(a - b) <= tol;
+const approx = (a: number, b: number, tol = 0.01): boolean => Math.abs(a - b) <= tol;
+
+// --- a DOM just real enough to run the export ------------------------------
+
+/** A canvas the export can draw on; only its size is meaningful. */
+interface StubCanvas {
+	width: number;
+	height: number;
+	getContext(id: string): unknown;
+	toBlob(cb: (b: Blob | null) => void, type?: string): void;
+}
+
+const noop = (): void => {};
+
+/** A 2D context that accepts every call and draws nothing. */
+function stub2d(): unknown {
+	return {
+		fillStyle: '',
+		strokeStyle: '',
+		lineJoin: '',
+		lineCap: '',
+		lineWidth: 1,
+		font: '',
+		textBaseline: '',
+		textAlign: '',
+		globalAlpha: 1,
+		globalCompositeOperation: 'source-over',
+		imageSmoothingEnabled: true,
+		fillRect: noop,
+		clearRect: noop,
+		drawImage: noop,
+		createLinearGradient: () => ({ addColorStop: noop }),
+		arc: noop,
+		beginPath: noop,
+		fill: noop,
+		stroke: noop,
+		save: noop,
+		restore: noop,
+		translate: noop,
+		rotate: noop,
+		rect: noop,
+		ellipse: noop,
+		moveTo: noop,
+		lineTo: noop,
+		closePath: noop,
+		fillText: noop,
+		setTransform: noop,
+		scale: noop,
+		getImageData: (_x: number, _y: number, w: number, h: number) => ({
+			data: new Uint8ClampedArray(w * h * 4)
+		})
+	};
+}
+
+/** A GL context that compiles nothing and reports success. */
+function stubGl(): unknown {
+	return {
+		VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, ARRAY_BUFFER: 3, STATIC_DRAW: 4, FLOAT: 5,
+		TEXTURE_2D: 6, TEXTURE0: 7, TEXTURE1: 8, RGBA: 9, UNSIGNED_BYTE: 10,
+		TEXTURE_WRAP_S: 11, TEXTURE_WRAP_T: 12, CLAMP_TO_EDGE: 13,
+		TEXTURE_MIN_FILTER: 14, TEXTURE_MAG_FILTER: 15, LINEAR: 16,
+		LINK_STATUS: 17, COMPILE_STATUS: 18, COLOR_BUFFER_BIT: 19, TRIANGLE_STRIP: 20,
+		createShader: () => ({}), shaderSource: noop, compileShader: noop,
+		getShaderParameter: () => true, getShaderInfoLog: () => '', deleteShader: noop,
+		createProgram: () => ({}), attachShader: noop, bindAttribLocation: noop,
+		linkProgram: noop, getProgramParameter: () => true, getProgramInfoLog: () => '',
+		useProgram: noop, createBuffer: () => ({}), bindBuffer: noop, bufferData: noop,
+		getAttribLocation: () => 0, enableVertexAttribArray: noop, vertexAttribPointer: noop,
+		getUniformLocation: (_p: unknown, n: string) => ({ name: n }),
+		createTexture: () => ({}), bindTexture: noop, texParameteri: noop,
+		uniform1i: noop, uniform1f: noop, uniform3f: noop, uniform4f: noop,
+		activeTexture: noop, pixelStorei: noop, texImage2D: noop, viewport: noop,
+		clearColor: noop, clear: noop, drawArrays: noop, deleteTexture: noop,
+		deleteProgram: noop,
+		getExtension: () => null
+	};
+}
+
+/**
+ * Install a stub `document` and `URL`, recording every canvas the export builds.
+ *
+ * `toBlob` reproduces the failure that matters: past the ceiling a real browser
+ * hands back `null` rather than throwing. The export has to keep every canvas it
+ * creates under that limit, and the only honest way to check is to let the same
+ * refusal happen here.
+ */
+function stubDom(sizes: Array<{ w: number; h: number }>): () => void {
+	const previousDocument = (globalThis as Record<string, unknown>).document;
+	const previousUrl = (globalThis as Record<string, unknown>).URL;
+
+	(globalThis as Record<string, unknown>).document = {
+		createElement: (tag: string): StubCanvas => {
+			if (tag !== 'canvas') throw new Error(`unexpected createElement(${tag})`);
+			const el: StubCanvas = {
+				width: 300,
+				height: 150,
+				getContext: (id: string) => (id === '2d' ? stub2d() : stubGl()),
+				toBlob: (cb: (b: Blob | null) => void) => {
+					sizes.push({ w: el.width, h: el.height });
+					const over =
+						el.width > MAX_EXPORT_EDGE ||
+						el.height > MAX_EXPORT_EDGE ||
+						el.width * el.height > MAX_EXPORT_AREA;
+					cb(over ? null : new Blob([new Uint8Array([1])], { type: 'image/png' }));
+				}
+			};
+			return el;
+		}
+	};
+	(globalThis as Record<string, unknown>).URL = {
+		createObjectURL: () => 'blob:stub',
+		revokeObjectURL: noop
+	};
+
+	return () => {
+		(globalThis as Record<string, unknown>).document = previousDocument;
+		(globalThis as Record<string, unknown>).URL = previousUrl;
+	};
+}
+
+/** A decoded photo stand-in: the export only reads `width` and `height`. */
+const fakePhoto = (w: number, h: number): PixelSource & Size =>
+	({ width: w, height: h }) as unknown as PixelSource & Size;
 
 // --- output geometry -------------------------------------------------------
 
 test('output keeps the requested aspect ratio', () => {
 	for (const r of RATIOS) {
 		const { w, h } = outputSize(4000, 3000, r.id, 'max');
-		const want = r.w ? r.w / r.h : 4000 / 3000;
+		const want = r.w && r.h ? r.w / r.h : 4000 / 3000;
 		assert.ok(
 			approx(w / h, want, 0.02),
 			`${r.id}: got ${w}x${h} (${(w / h).toFixed(3)}), want ${want.toFixed(3)}`
@@ -92,7 +219,7 @@ test('preview and export agree on the composition geometry', () => {
 
 	for (const showSwatch of [false, true]) {
 		for (const showMix of [false, true]) {
-			for (const frame of ['none', 'white']) {
+			for (const frame of ['none', 'white'] as FrameId[]) {
 				const opts = { frame, accentHex: '#FCC000', showSwatch, showCode: true, showMix };
 				const preview = composeGeometry({ imgW, imgH, margin: 60, ...opts });
 				const { w: ow, h: oh } = outputSize(imgW, imgH, 'original', 'max');
@@ -113,6 +240,109 @@ test('preview and export agree on the composition geometry', () => {
 	}
 });
 
+test('the export canvas never exceeds what a browser will allocate', async () => {
+	// A canvas past the ceiling does not throw: the 2D context silently stops
+	// drawing and `toBlob` calls back with `null`, so the export failed with a
+	// generic message on every browser at `max` quality with a frame.
+	//
+	// This drives `exportComposite` itself, with a stubbed DOM that records every
+	// canvas it asks for and refuses to encode one past the ceiling — the way a
+	// real browser behaves. Asserting the fitting helper alone would have passed
+	// while the export ignored it.
+	const canvases: Array<{ w: number; h: number }> = [];
+	const restore = stubDom(canvases);
+
+	try {
+		const cases: Array<[number, number, QualityId, FrameId, number]> = [
+			[4032, 3024, 'max', 'white', 50],   // 4097 px before the fix
+			[4032, 3024, 'max', 'white', 100],  // 5120x4112 before the fix
+			[4032, 3024, 'max', 'accent', 100],
+			[4032, 3024, 'max', 'none', 0],
+			[4032, 3024, 'std', 'white', 100],
+			[8000, 6000, 'max', 'custom', 100],
+			[6000, 8000, 'max', 'white', 75]
+		];
+
+		for (const [imgW, imgH, quality, frame, margin] of cases) {
+			canvases.length = 0;
+			const label = `${imgW}x${imgH} ${quality} ${frame} margin=${margin}`;
+			const source = fakePhoto(imgW, imgH);
+
+			const result = await exportComposite({
+				source,
+				params: {
+					target: { r: 252, g: 192, b: 0 },
+					width: 30,
+					feather: 40,
+					tone: 0,
+					contrast: 0,
+					preset: 0,
+					maskOn: 0,
+					bypass: 0,
+					crop: { sx: 0, sy: 0, sw: 1, sh: 1 }
+				},
+				maskSpec: { shape: null, lasso: [], strokes: [] },
+				frame,
+				customFrame: '#101010',
+				margin,
+				ratio: 'original',
+				quality,
+				align: 'left',
+				showSwatch: true,
+				showCode: true,
+				showMix: true,
+				mixPalette: null
+			});
+
+			// The observable contract: an image comes back at all.
+			assert.ok(result.blob.size > 0, `${label}: empty blob`);
+			assert.ok(result.width > 0 && result.height > 0, `${label}: no size`);
+
+			for (const c of canvases) {
+				assert.ok(
+					c.w <= MAX_EXPORT_EDGE && c.h <= MAX_EXPORT_EDGE,
+					`${label}: a ${c.w}x${c.h} canvas was requested, over ${MAX_EXPORT_EDGE}`
+				);
+				assert.ok(
+					c.w * c.h <= MAX_EXPORT_AREA,
+					`${label}: a ${c.w}x${c.h} canvas exceeds the area ceiling`
+				);
+			}
+		}
+
+		// A photo that already fits is left exactly alone.
+		canvases.length = 0;
+		const small = await exportComposite({
+			source: fakePhoto(1200, 800),
+			params: {
+				target: { r: 252, g: 192, b: 0 },
+				width: 30,
+				feather: 40,
+				tone: 0,
+				contrast: 0,
+				preset: 0,
+				maskOn: 0,
+				bypass: 0,
+				crop: { sx: 0, sy: 0, sw: 1, sh: 1 }
+			},
+			maskSpec: { shape: null, lasso: [], strokes: [] },
+			frame: 'none',
+			margin: 0,
+			ratio: 'original',
+			quality: 'max',
+			align: 'left',
+			showSwatch: false,
+			showCode: false,
+			showMix: false,
+			mixPalette: null
+		});
+		assert.equal(small.width, 1200);
+		assert.equal(small.height, 800);
+	} finally {
+		restore();
+	}
+});
+
 test('the band is exactly the margin, and the block is fitted to it', () => {
 	// The band used to be floored at the overlay block's height, which pinned the
 	// margin slider: the floor was larger than anything the slider could request,
@@ -126,10 +356,10 @@ test('the band is exactly the margin, and the block is fitted to it', () => {
 		[false, true, false],
 		[true, true, false],
 		[true, true, true]
-	]) {
+	] as const) {
 		const rows = (showSwatch || showCode ? 1 : 0) + (showMix ? 1 : 0);
 		let prev = -1;
-		const seen = new Set();
+		const seen = new Set<number>();
 
 		for (let margin = 0; margin <= 100; margin++) {
 			const g = composeGeometry({
@@ -166,7 +396,7 @@ test('the block stays inside the band at every margin the slider offers', () => 
 		[false, true, false],
 		[true, true, false],
 		[true, true, true]
-	]) {
+	] as const) {
 		const rows = (showSwatch || showCode ? 1 : 0) + (showMix ? 1 : 0);
 		const floor = overlayMinMargin({ showSwatch, showCode, showMix });
 
@@ -208,7 +438,7 @@ test('the block is fitted to the band, which the drawn font proves', () => {
 		[false, true, false],
 		[true, true, false],
 		[true, true, true]
-	]) {
+	] as const) {
 		const rows = (showSwatch || showCode ? 1 : 0) + (showMix ? 1 : 0);
 
 		const floor = overlayMinMargin({ showSwatch, showCode, showMix });
@@ -217,9 +447,11 @@ test('the block is fitted to the band, which the drawn font proves', () => {
 		const roomy = paint({ frame: 'white', margin: 100, showSwatch, showCode, showMix });
 		const tight = paint({ frame: 'white', margin: floor, showSwatch, showCode, showMix });
 
-		const rowH = (r) => {
+		const rowH = (r: PaintResult): number | null => {
 			const font = r.calls.filter((c) => c[0] === 'set:font').pop();
-			return font ? Number(/ (\d+(?:\.\d+)?)px/.exec(font[1])[1]) / 0.5 : null;
+			if (!font) return null;
+			const m = / (\d+(?:\.\d+)?)px/.exec(strArg(font, 0));
+			return m ? Number(m[1]) / 0.5 : null;
 		};
 
 		const big = rowH(roomy);
@@ -229,9 +461,9 @@ test('the block is fitted to the band, which the drawn font proves', () => {
 		// The block is drawn at most at its natural size...
 		assert.ok(big <= unit * 0.075 + 1e-6, `margin=100: row ${big} exceeds natural`);
 		// ...and shrinks in a tighter band rather than overflowing it.
-		assert.ok(small < big, `margin=30 row ${small} should be under margin=100 row ${big}`);
+		assert.ok(small < big, `margin=floor row ${small} should be under margin=100 row ${big}`);
 		// ...while staying legible.
-		assert.ok(small >= unit * 0.02 - 1e-6, `margin=30 row ${small} below the legible minimum`);
+		assert.ok(small >= unit * 0.02 - 1e-6, `margin=floor row ${small} below the legible minimum`);
 
 		// The whole block must fit the band it was given.
 		const g = composeGeometry({
@@ -330,36 +562,82 @@ test('a frameless photo gets no band, whatever the overlays', () => {
 // overlay controls drew nothing on screen: they were only ever painted into the
 // exported file.
 
-/** A 2D context that records the calls instead of drawing them. */
-function recordingCtx() {
-	const calls = [];
-	return {
-		calls,
-		ctx: new Proxy(
-			{},
-			{
-				get(_t, k) {
-					if (k === 'canvas') return { width: 0, height: 0 };
-					if (k === 'createLinearGradient')
-						return (...a) => {
-							calls.push(['createLinearGradient', ...a]);
-							return { addColorStop: () => {} };
-						};
-					return (...a) => calls.push([k, ...a]);
-				},
-				set(_t, k, v) {
-					calls.push([`set:${k}`, v]);
-					return true;
-				}
-			}
-		)
-	};
+/** One recorded canvas call: the method name, then its arguments. The arguments
+ *  are genuinely dynamic — a recording proxy has no idea what it will be asked
+ *  for — so they stay `unknown` and are read through the narrow helpers below
+ *  rather than asserted into place at every call site. */
+type Call = [name: string, ...args: unknown[]];
+
+/** Read a numeric argument of a recorded call, naming the call on failure. */
+function numArg(c: Call, i: number): number {
+	const v = c[i + 1];
+	assert.equal(typeof v, 'number', `arg ${i} of ${c[0]} should be a number, got ${typeof v}`);
+	return v as number;
 }
 
-function paint(opts) {
+/** Read a string argument of a recorded call. */
+function strArg(c: Call, i: number): string {
+	const v = c[i + 1];
+	assert.equal(typeof v, 'string', `arg ${i} of ${c[0]} should be a string, got ${typeof v}`);
+	return v as string;
+}
+
+/** A 2D context that records the calls instead of drawing them. */
+function recordingCtx(): { calls: Call[]; ctx: CanvasRenderingContext2D } {
+	const calls: Call[] = [];
+	const proxy = new Proxy(
+		{},
+		{
+			get(_t, k) {
+				const name = String(k);
+				if (name === 'canvas') return { width: 0, height: 0 };
+				if (name === 'createLinearGradient')
+					return (...a: number[]) => {
+						calls.push(['createLinearGradient', ...a]);
+						return { addColorStop: () => {} };
+					};
+				return (...a: unknown[]) => {
+					calls.push([name, ...a]);
+				};
+			},
+			set(_t, k, v) {
+				calls.push([`set:${String(k)}`, v]);
+				return true;
+			}
+		}
+	) as CanvasRenderingContext2D;
+	return { calls, ctx: proxy };
+}
+
+/** What `paint` hands back: the geometry, the draw calls, and the two calls most
+ *  tests inspect. */
+interface PaintResult {
+	g: Geometry;
+	photoBottom: number;
+	calls: Call[];
+	circles: Call[];
+	texts: Call[];
+}
+
+/** The overlay toggles, all optional, as the tests pass them. */
+type PaintOpts = Partial<Omit<ComposeInput, 'imgW' | 'imgH' | 'accentHex'>> & {
+	align?: Align;
+	showSwatch?: boolean;
+	showCode?: boolean;
+	showMix?: boolean;
+};
+
+/** Compose and paint once, recording what the painter did. */
+function paint(opts: PaintOpts): PaintResult {
 	const imgW = 4000;
 	const imgH = 3000;
-	const g = composeGeometry({ imgW, imgH, accentHex: '#FCC000', ...opts });
+	// Defaults come last: `opts` supplies only what a given test varies.
+	const g = composeGeometry({
+		imgW,
+		imgH,
+		accentHex: '#FCC000',
+		...opts
+	});
 	const { calls, ctx } = recordingCtx();
 	drawOverlayBlock(ctx, {
 		innerW: imgW,
@@ -379,7 +657,7 @@ function paint(opts) {
 			{ r: 4, g: 5, b: 6 }
 		]
 	});
-	const pick = (name) => calls.filter((c) => c[0] === name);
+	const pick = (name: string): Call[] => calls.filter((c) => c[0] === name);
 	return { g, photoBottom: g.pad + imgH, calls, circles: pick('arc'), texts: pick('fillText') };
 }
 
@@ -395,13 +673,13 @@ test('with a frame the overlay block sits below the photo, inside the band', () 
 	assert.equal(circles.length, 1, 'the swatch is drawn');
 	assert.equal(texts.length, 1, 'the code is drawn');
 
-	const swatchCy = circles[0][2];
-	const codeY = texts[0][3];
+	const swatchCy = numArg(circles[0], 1); // arc(x, y, r, ...)
+	const codeY = numArg(texts[0], 2); // fillText(text, x, y)
 	assert.ok(swatchCy >= photoBottom, `swatch at ${swatchCy} overlaps the photo (bottom ${photoBottom})`);
 	assert.ok(codeY >= photoBottom, `code at ${codeY} overlaps the photo`);
 	assert.equal(swatchCy, codeY, 'the swatch and the code share a baseline');
 	assert.ok(codeY <= g.outH, 'the block stays inside the frame');
-	assert.equal(texts[0][1], '#FCC000', 'the code shows the sampled color');
+	assert.equal(strArg(texts[0], 0), '#FCC000', 'the code shows the sampled color');
 });
 
 test('frameless overlays stay on the photo and get a scrim', () => {
@@ -415,11 +693,12 @@ test('frameless overlays stay on the photo and get a scrim', () => {
 
 	const grad = calls.find((c) => c[0] === 'createLinearGradient');
 	assert.ok(grad, 'a scrim is drawn when there is no frame to hold the text');
-	assert.equal(grad[1], 0, 'the scrim spans the full width');
-	assert.ok(grad[2] > 0 && grad[2] < g.outH, 'the scrim starts inside the photo');
-	assert.equal(grad[4], g.outH, 'the scrim runs to the bottom edge');
+	assert.equal(numArg(grad, 0), 0, 'the scrim spans the full width');
+	const y0 = numArg(grad, 1);
+	assert.ok(y0 > 0 && y0 < g.outH, 'the scrim starts inside the photo');
+	assert.equal(numArg(grad, 3), g.outH, 'the scrim runs to the bottom edge');
 	assert.equal(texts.length, 1);
-	assert.ok(texts[0][3] < g.outH, 'the block stays on the photo');
+	assert.ok(numArg(texts[0], 2) < g.outH, 'the block stays on the photo');
 });
 
 test('an opaque frame band needs no scrim', () => {
@@ -432,24 +711,30 @@ test('with every overlay off, nothing is painted', () => {
 	assert.equal(calls.length, 0);
 });
 
+/** The mix bar among the recorded rects: the only one narrower than the band. */
+const mixBar = (r: PaintResult): Call | undefined =>
+	r.calls.find((c) => c[0] === 'fillRect' && numArg(c, 2) > r.g.pad);
+
 test('the mix bar is narrower than the band, so it has room to move', () => {
-	const { g, calls } = paint({ frame: 'white', margin: 50, showMix: true });
-	const span = g.outW - 2 * g.pad;
-	const bar = calls.find((c) => c[0] === 'fillRect' && c[3] < span && c[3] > span * 0.5);
+	const r = paint({ frame: 'white', margin: 50, showMix: true });
+	const span = r.g.outW - 2 * r.g.pad;
+	const bar = r.calls.find(
+		(c) => c[0] === 'fillRect' && numArg(c, 2) < span && numArg(c, 2) > span * 0.5
+	);
 	assert.ok(bar, `the mix bar should span most, but not all, of the band (span ${span})`);
 });
 
 test('position moves the block across the band without leaving it', () => {
 	// The block had no position control: it was always flush left. It now aligns
 	// left, centre, or right, and must stay inside the band at every setting.
-	const opts = { frame: 'white', margin: 50, showSwatch: true, showCode: true, showMix: true };
+	const opts = { frame: 'white' as FrameId, margin: 50, showSwatch: true, showCode: true, showMix: true };
 
 	const left = paint({ ...opts, align: 'left' });
 	const center = paint({ ...opts, align: 'center' });
 	const right = paint({ ...opts, align: 'right' });
 
 	// arc(centreX, centreY, radius, start, end): the swatch's centre x.
-	const swatchX = (r) => r.circles[0][1];
+	const swatchX = (r: PaintResult): number => numArg(r.circles[0], 0);
 	const inset = left.g.pad;
 	const bandRight = left.g.outW - inset;
 
@@ -458,16 +743,26 @@ test('position moves the block across the band without leaving it', () => {
 
 	// The widest element is the mix bar, so it decides whether the block fits.
 	// fillRect(x, y, w, h): the bar's left edge and width.
-	for (const [name, r] of [['left', left], ['center', center], ['right', right]]) {
-		const bar = r.calls.find((c) => c[0] === 'fillRect' && typeof c[3] === 'number' && c[3] > r.g.pad);
+	for (const [name, r] of [
+		['left', left],
+		['center', center],
+		['right', right]
+	] as const) {
+		const bar = mixBar(r);
 		assert.ok(bar, `${name}: the mix bar is drawn`);
-		assert.ok(bar[1] >= inset - 1e-6, `${name}: the block starts left of the band`);
-		assert.ok(bar[1] + bar[3] <= bandRight + 1e-6, `${name}: the block runs past the band`);
+		const x = numArg(bar, 0);
+		const w = numArg(bar, 2);
+		assert.ok(x >= inset - 1e-6, `${name}: the block starts left of the band`);
+		assert.ok(x + w <= bandRight + 1e-6, `${name}: the block runs past the band`);
 	}
 
 	// Right alignment should actually reach the far side, not just move a bit.
-	const rightBar = right.calls.find((c) => c[0] === 'fillRect' && typeof c[3] === 'number' && c[3] > right.g.pad);
-	assert.ok(Math.abs(rightBar[1] + rightBar[3] - bandRight) < 1e-6, 'right should reach the edge');
+	const rightBar = mixBar(right);
+	assert.ok(rightBar, 'right: the mix bar is drawn');
+	assert.ok(
+		Math.abs(numArg(rightBar, 0) + numArg(rightBar, 2) - bandRight) < 1e-6,
+		'right should reach the edge'
+	);
 });
 
 test('center and right are inert when nothing is drawn', () => {

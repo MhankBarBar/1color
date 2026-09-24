@@ -1,0 +1,12 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		/* Application code only. Node's types are deliberately absent: without
+		   them, using `process`, `Buffer`, or `node:fs` in a shipped module is a
+		   compile error rather than a runtime surprise. One shared tsconfig would
+		   let a test's globals leak into app code unnoticed. */
+		"types": ["vite/client"]
+	},
+	"include": ["src/**/*.ts", "src/**/*.svelte", "src/**/*.d.ts"],
+	"exclude": ["src/**/*.test.ts"]
+}

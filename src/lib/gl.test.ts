@@ -14,10 +14,25 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SHADERS, UNIFORMS } from './shaders.js';
-import { Renderer } from './gl.js';
+import { Renderer, type GL, type RendererCanvas } from './gl.js';
 import { cropRect } from './export.js';
 
-const DIALECTS = [
+/** One dialect's sources and the regexes that identify it. */
+interface Dialect {
+	name: string;
+	vert: string;
+	frag: string;
+	version: RegExp;
+	inKeyword: RegExp;
+	outKeyword: RegExp;
+	attributeKeyword: RegExp;
+	sampler: RegExp;
+	maskSampler: RegExp;
+	writes: RegExp;
+	fragColor: RegExp;
+}
+
+const DIALECTS: Dialect[] = [
 	{
 		name: 'ES 3.00 (WebGL2)',
 		vert: SHADERS.vert300,
@@ -47,11 +62,11 @@ const DIALECTS = [
 ];
 
 /** Uniform names the fragment source actually declares. */
-const declaredIn = (frag) =>
+const declaredIn = (frag: string): string[] =>
 	[...frag.matchAll(/^\s*uniform\s+\w+\s+(\w+)\s*;/gm)].map((m) => m[1]);
 
 /** A uniform counts as used if it appears anywhere but its own declaration. */
-const usedIn = (frag, names) => {
+const usedIn = (frag: string, names: readonly string[]): string[] => {
 	const body = frag.replace(/^\s*uniform\s+\w+\s+\w+\s*;\s*$/gm, '');
 	return names.filter((n) => new RegExp(`\\b${n}\\b`).test(body));
 };
@@ -83,13 +98,16 @@ for (const d of DIALECTS) {
 
 	test(`${d.name}: uniform wiring matches the renderer`, () => {
 		const declared = declaredIn(d.frag);
+		// Compared as plain strings: `UNIFORMS` is a literal tuple now, so
+		// `includes` would demand one of its exact members rather than any name.
+		const bound: readonly string[] = UNIFORMS;
 		assert.deepEqual(
-			declared.filter((n) => !UNIFORMS.includes(n)),
+			declared.filter((n) => !bound.includes(n)),
 			[],
 			'declared in GLSL but never bound in JS'
 		);
 		assert.deepEqual(
-			UNIFORMS.filter((n) => !declared.includes(n)),
+			bound.filter((n) => !declared.includes(n)),
 			[],
 			'bound in JS but not declared in GLSL'
 		);
@@ -153,6 +171,16 @@ test('the WebGL2 dialect uses the ES 3.00 forms', () => {
 
 // --- uniform values --------------------------------------------------------
 
+/** One recorded uniform call: its name, then the values passed. */
+type UniformCall = [name: string, ...values: unknown[]];
+
+/** The fake context plus what it recorded for assertions. */
+interface FakeGL {
+	gl: GL;
+	calls: UniformCall[];
+	bad: unknown[];
+}
+
 /**
  * A WebGL context that records uniform values and rejects non-finite ones.
  *
@@ -161,17 +189,20 @@ test('the WebGL2 dialect uses the ES 3.00 forms', () => {
  * renders as one flat colour with nothing logged. That is precisely how the
  * ratio crop broke — the renderer read `crop.x` while `cropRect` returned
  * `crop.sx` — so the check belongs here, at the boundary where it went wrong.
+ *
+ * Structural typing does the work: the stub implements exactly the surface
+ * `Renderer` touches, and any call it makes that this omits is a compile error.
  */
-function fakeGL() {
-	const calls = [];
-	const bad = [];
-	const record = (name, values) => {
+function fakeGL(): FakeGL {
+	const calls: UniformCall[] = [];
+	const bad: unknown[] = [];
+	const record = (name: string, values: unknown[]): void => {
 		calls.push([name, ...values]);
 		for (const v of values) {
 			if (typeof v === 'number' && !Number.isFinite(v)) bad.push([name, v]);
 		}
 	};
-	const gl = {
+	const gl: GL = {
 		VERTEX_SHADER: 1,
 		FRAGMENT_SHADER: 2,
 		ARRAY_BUFFER: 3,
@@ -192,33 +223,43 @@ function fakeGL() {
 		COMPILE_STATUS: 18,
 		COLOR_BUFFER_BIT: 19,
 		TRIANGLE_STRIP: 20,
-		createShader: () => ({}),
+		createShader: () => ({}) as WebGLShader,
 		shaderSource: () => {},
 		compileShader: () => {},
 		getShaderParameter: () => true,
 		getShaderInfoLog: () => '',
 		deleteShader: () => {},
-		createProgram: () => ({}),
+		createProgram: () => ({}) as WebGLProgram,
 		attachShader: () => {},
 		bindAttribLocation: () => {},
 		linkProgram: () => {},
 		getProgramParameter: () => true,
 		getProgramInfoLog: () => '',
 		useProgram: () => {},
-		createBuffer: () => ({}),
+		createBuffer: () => ({}) as WebGLBuffer,
 		bindBuffer: () => {},
 		bufferData: () => {},
 		getAttribLocation: () => 0,
 		enableVertexAttribArray: () => {},
 		vertexAttribPointer: () => {},
-		getUniformLocation: (_p, n) => ({ name: n }),
-		createTexture: () => ({}),
+		getUniformLocation: (_p: WebGLProgram, n: string) =>
+			({ name: n }) as unknown as WebGLUniformLocation,
+		createTexture: () => ({}) as WebGLTexture,
 		bindTexture: () => {},
 		texParameteri: () => {},
-		uniform1i: (l, v) => record(`uniform1i:${l.name}`, [v]),
-		uniform1f: (l, v) => record(`uniform1f:${l.name}`, [v]),
-		uniform3f: (l, a, b, c) => record(`uniform3f:${l.name}`, [a, b, c]),
-		uniform4f: (l, a, b, c, d) => record(`uniform4f:${l.name}`, [a, b, c, d]),
+		uniform1i: (l: WebGLUniformLocation | null, v: number) =>
+			record(`uniform1i:${locName(l)}`, [v]),
+		uniform1f: (l: WebGLUniformLocation | null, v: number) =>
+			record(`uniform1f:${locName(l)}`, [v]),
+		uniform3f: (l: WebGLUniformLocation | null, a: number, b: number, c: number) =>
+			record(`uniform3f:${locName(l)}`, [a, b, c]),
+		uniform4f: (
+			l: WebGLUniformLocation | null,
+			a: number,
+			b: number,
+			c: number,
+			d: number
+		) => record(`uniform4f:${locName(l)}`, [a, b, c, d]),
 		activeTexture: () => {},
 		pixelStorei: () => {},
 		texImage2D: () => {},
@@ -228,18 +269,34 @@ function fakeGL() {
 		drawArrays: () => {},
 		deleteTexture: () => {},
 		deleteProgram: () => {}
-	};
+	} as unknown as GL;
 	return { gl, calls, bad };
 }
+
+/** The name this stub gives a uniform location, so recordings can be keyed. */
+function locName(l: WebGLUniformLocation | null): string {
+	return (l as unknown as { name?: string } | null)?.name ?? '?';
+}
+
+/** A canvas whose `getContext('webgl2')` is the fake, and nothing else. */
+function fakeCanvas(gl: GL): RendererCanvas {
+	return {
+		width: 10,
+		height: 10,
+		getContext: (id: string) => (id === 'webgl2' ? gl : null)
+	} as RendererCanvas;
+}
+
+/** A stand-in texture source: the renderer only reads width/height from it. */
+const fakeSource = { width: 4, height: 3 } as unknown as ImageBitmap;
 
 test('every uniform value handed to GL is a real number', () => {
 	// A field-name mismatch between `cropRect` and the renderer used to upload NaN
 	// and blank the photo. Nothing else in the suite could see it.
 	const { gl, bad } = fakeGL();
-	const canvas = { getContext: (type) => (type === 'webgl2' ? gl : null) };
 
-	const r = new Renderer(canvas);
-	r.setImage({ width: 4, height: 3 });
+	const r = new Renderer(fakeCanvas(gl));
+	r.setImage(fakeSource);
 	r.setParams({
 		target: { r: 252, g: 192, b: 0 },
 		width: 30,
@@ -261,10 +318,9 @@ test('the renderer reads the same crop fields cropRect produces', () => {
 	// The contract, stated directly: whatever cropRect names its fields, the
 	// renderer must read those names. Asserted through the real uniform call.
 	const { gl, calls } = fakeGL();
-	const canvas = { getContext: (type) => (type === 'webgl2' ? gl : null) };
 
-	const r = new Renderer(canvas);
-	r.setImage({ width: 4, height: 3 });
+	const r = new Renderer(fakeCanvas(gl));
+	r.setImage(fakeSource);
 	const crop = cropRect(4032, 3024, '1:1');
 	r.setParams({ crop });
 	r.resize(10, 10, 1);
@@ -282,10 +338,9 @@ test('the renderer reads the same crop fields cropRect produces', () => {
 test('the default crop is the identity', () => {
 	// Nothing set: the shader must still sample the whole photo rather than NaN.
 	const { gl, calls } = fakeGL();
-	const canvas = { getContext: (type) => (type === 'webgl2' ? gl : null) };
 
-	const r = new Renderer(canvas);
-	r.setImage({ width: 4, height: 3 });
+	const r = new Renderer(fakeCanvas(gl));
+	r.setImage(fakeSource);
 	r.resize(10, 10, 1);
 	r.render();
 

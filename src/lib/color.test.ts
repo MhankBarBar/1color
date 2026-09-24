@@ -1,13 +1,13 @@
 // Regression tests for the color matcher.
 //
-// The invariant that matters: color.js is the CPU mirror of the fragment shader
-// in gl.js, and the two are edited independently. If they drift, the coverage
+// The invariant that matters: color.ts is the CPU mirror of the fragment shader
+// in gl.ts, and the two are edited independently. If they drift, the coverage
 // readout and the pixels disagree — a real bug this file exists to catch.
 //
-//   node --test src/lib/
+//   npm test
 //
 // The shader functions are transcribed here rather than imported (GLSL is not
-// JS), so when you change gl.js, change the transcription too.
+// TS), so when you change gl.ts, change the transcription too.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,15 +25,16 @@ import {
 	paletteFromImageData,
 	suggestedAccent
 } from './color.js';
+import type { Hsv, Rgb } from './types.js';
 
 // --- transcription of the fragment shader ---------------------------------
 
-const toLin = (v) => {
+const toLin = (v: number): number => {
 	v /= 255;
 	return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 };
 
-function shaderHsv(c) {
+function shaderHsv(c: Rgb): Hsv {
 	const R = toLin(c.r);
 	const G = toLin(c.g);
 	const B = toLin(c.b);
@@ -52,12 +53,12 @@ function shaderHsv(c) {
 	return { h, s, v: mx, d };
 }
 
-const sstep = (e0, e1, x) => {
+const sstep = (e0: number, e1: number, x: number): number => {
 	const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
 	return t * t * (3 - 2 * t);
 };
 
-function shaderDist(a, b) {
+function shaderDist(a: Rgb, b: Rgb): number {
 	const A = shaderHsv(a);
 	const B = shaderHsv(b);
 	if (B.s < 0.15) return Math.min(1, Math.abs(A.v - B.v) * 1.6);
@@ -67,29 +68,43 @@ function shaderDist(a, b) {
 	return Math.max(dh * 2, 1 - gate);
 }
 
-function shaderKeep(px, target, width, feather) {
+function shaderKeep(px: Rgb, target: Rgb, width: number, feather: number): number {
 	const dist = shaderDist(px, target);
 	const e0 = 0.015 + (width / 100) * 0.3;
 	const e1 = e0 + Math.max((feather / 100) * 0.16, 0.0001);
 	return 1 - sstep(e0, e1, dist);
 }
 
-const GOLD = { r: 255, g: 192, b: 0 };
+const GOLD: Rgb = { r: 255, g: 192, b: 0 };
 
 /** HSL-style wheel sample, so tests can sweep real hues rather than guess RGB. */
-function hsl(h, s, l) {
+function hsl(h: number, s: number, l: number): Rgb {
 	const c = (1 - Math.abs(2 * l - 1)) * s;
 	const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
 	const m = l - c / 2;
-	const t = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
-		: h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
-	return { r: Math.round((t[0] + m) * 255), g: Math.round((t[1] + m) * 255), b: Math.round((t[2] + m) * 255) };
+	const t: [number, number, number] =
+		h < 60
+			? [c, x, 0]
+			: h < 120
+				? [x, c, 0]
+				: h < 180
+					? [0, c, x]
+					: h < 240
+						? [0, x, c]
+						: h < 300
+							? [x, 0, c]
+							: [c, 0, x];
+	return {
+		r: Math.round((t[0] + m) * 255),
+		g: Math.round((t[1] + m) * 255),
+		b: Math.round((t[2] + m) * 255)
+	};
 }
 
 // --- CPU / GPU lockstep ----------------------------------------------------
 
 test('matchAlpha agrees with the shader keep value', () => {
-	const cases = [
+	const cases: [Rgb, Rgb, number, number][] = [
 		[GOLD, GOLD, 30, 40],
 		[{ r: 120, g: 95, b: 12 }, GOLD, 30, 40],
 		[{ r: 255, g: 230, b: 120 }, GOLD, 30, 40],
@@ -174,11 +189,11 @@ test('a neutral target matches brightness instead of hue', () => {
 // --- control response ------------------------------------------------------
 
 test('kept coverage rises monotonically with the range slider', () => {
-	const scene = [];
+	const scene: Rgb[] = [];
 	for (let h = 0; h < 360; h += 6) scene.push(hsl(h, 0.7, 0.5));
 	scene.push({ r: 128, g: 128, b: 128 });
 
-	const coverage = (w) =>
+	const coverage = (w: number): number =>
 		scene.filter((c) => matchAlpha(c, GOLD, w, 40) > 0.5).length / scene.length;
 
 	const narrow = coverage(20);
@@ -245,7 +260,7 @@ test('near-black shadows do not outrank real color', () => {
 });
 
 test('suggestedAccent skips near-black and washed-out colors', () => {
-	const palette = [
+	const palette: Rgb[] = [
 		{ r: 4, g: 2, b: 1 }, // shadow, most common
 		{ r: 250, g: 250, b: 248 }, // blown highlight
 		{ r: 240, g: 186, b: 20 } // the actual subject
@@ -254,13 +269,16 @@ test('suggestedAccent skips near-black and washed-out colors', () => {
 	assert.deepEqual(pick, { r: 240, g: 186, b: 20 });
 
 	// A genuinely monochrome photo still needs something to open with.
-	const mono = [{ r: 4, g: 2, b: 1 }, { r: 128, g: 128, b: 130 }];
+	const mono: Rgb[] = [
+		{ r: 4, g: 2, b: 1 },
+		{ r: 128, g: 128, b: 130 }
+	];
 	assert.deepEqual(suggestedAccent(mono), { r: 4, g: 2, b: 1 });
 });
 
 test('matchAlphaRgb agrees with matchAlpha', () => {
 	// The numeric path exists for speed; it must not drift from the readable one.
-	const cases = [
+	const cases: [Rgb, Rgb, number, number][] = [
 		[{ r: 252, g: 192, b: 0 }, { r: 252, g: 192, b: 0 }, 30, 40],
 		[{ r: 120, g: 95, b: 12 }, { r: 252, g: 192, b: 0 }, 30, 40],
 		[{ r: 30, g: 120, b: 60 }, { r: 252, g: 192, b: 0 }, 80, 10],
@@ -277,13 +295,13 @@ test('matchAlphaRgb agrees with matchAlpha', () => {
 test('reused scratch records do not leak state between samples', () => {
 	// The coverage scan passes two records that are written on every iteration.
 	// If a field were left stale, one pixel's result would depend on the previous.
-	const sA = {};
-	const sB = {};
+	const sA: Hsv = { h: 0, s: 0, v: 0, d: 0 };
+	const sB: Hsv = { h: 0, s: 0, v: 0, d: 0 };
 	const target = { r: 252, g: 192, b: 0 };
 	const e0 = widthToDist(30);
 	const fd = featherToDist(40);
 
-	const px = [
+	const px: [number, number, number][] = [
 		[252, 192, 0],
 		[30, 120, 60],
 		[120, 95, 12],
@@ -291,7 +309,7 @@ test('reused scratch records do not leak state between samples', () => {
 	];
 
 	const withScratch = px.map((p) => matchAlphaRgb(p[0], p[1], p[2], target, e0, fd, sA, sB));
-	const fresh = px.map((p) => matchAlphaRgb(p[0], p[1], p[2], target, e0, fd, {}, {}));
+	const fresh = px.map((p) => matchAlphaRgb(p[0], p[1], p[2], target, e0, fd));
 	assert.deepEqual(withScratch, fresh);
 
 	// Re-running the same sequence must give identical output.
@@ -321,8 +339,8 @@ test('coverage from a 2D grid tracks the true figure', () => {
 	const target = { r: 252, g: 192, b: 0 };
 	const e0 = widthToDist(30);
 	const fd = featherToDist(40);
-	const sA = {};
-	const sB = {};
+	const sA: Hsv = { h: 0, s: 0, v: 0, d: 0 };
+	const sB: Hsv = { h: 0, s: 0, v: 0, d: 0 };
 
 	let kept = 0;
 	for (let i = 0; i < W * H; i++) {
@@ -331,7 +349,7 @@ test('coverage from a 2D grid tracks the true figure', () => {
 	}
 	const truth = kept / (W * H);
 
-	// The low-discrepancy sampler the app uses (mirrors coverGrid in analysis.js).
+	// The low-discrepancy sampler the app uses (mirrors coverGrid in analysis.ts).
 	const grid = 80;
 	const n = grid * grid;
 	const GOLDEN = 0.6180339887498949;

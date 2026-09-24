@@ -9,15 +9,20 @@
  *
  * Kept as its own unit rather than inlined so the ordering rule can be tested.
  */
-export function createLoadGate() {
+export interface LoadGate {
+	/** Claim the newest token. Invalidates every load already in flight. */
+	begin(): number;
+	/** True while `token` is still the newest load. */
+	isCurrent(token: number): boolean;
+}
+
+export function createLoadGate(): LoadGate {
 	let current = 0;
 	return {
-		/** Claim the newest token. Invalidates every load already in flight. */
-		begin() {
+		begin(): number {
 			return ++current;
 		},
-		/** True while `token` is still the newest load. */
-		isCurrent(token) {
+		isCurrent(token: number): boolean {
 			return token === current;
 		}
 	};

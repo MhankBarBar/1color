@@ -4,6 +4,7 @@
 // Kept deliberately separate from gl.js — the shader is the source of truth for
 // pixels, this module is the source of truth for numbers shown as text.
 
+import type { Hsv, PixelSource, Rgb } from './types.js';
 import {
 	matchAlphaRgb,
 	paletteFromImageData,
@@ -34,7 +35,7 @@ const COVER_GRID = 80;
  */
 const GOLDEN = 0.6180339887498949;
 
-function coverGrid(data, w, h, grid) {
+function coverGrid(data: Uint8ClampedArray, w: number, h: number, grid: number): Uint8Array {
 	const n = grid * grid;
 	const out = new Uint8Array(n * 3);
 	for (let k = 0; k < n; k++) {
@@ -53,8 +54,18 @@ function coverGrid(data, w, h, grid) {
 }
 
 export class Sampler {
+	source: PixelSource;
+	w: number;
+	h: number;
+	data: Uint8ClampedArray;
+	pickW: number;
+	pickH: number;
+	pickCtx: CanvasRenderingContext2D;
+	palette: Rgb[];
+	cover: Uint8Array;
+
 	/** @param {HTMLCanvasElement|ImageBitmap} source */
-	constructor(source) {
+	constructor(source: PixelSource) {
 		this.source = source;
 
 		// Small copy: coverage math and palette extraction.
@@ -73,7 +84,7 @@ export class Sampler {
 	}
 
 	/** Average a 3x3 neighborhood so a single noisy pixel can't win a tap. */
-	pickAt(nx, ny) {
+	pickAt(nx: number, ny: number): Rgb {
 		const x = Math.round(nx * (this.pickW - 1));
 		const y = Math.round(ny * (this.pickH - 1));
 		const x0 = Math.max(0, x - 1);
@@ -100,13 +111,13 @@ export class Sampler {
 	 * Runs over a fixed 2D grid of the whole frame rather than a linear stride,
 	 * so the figure is stable and cannot alias against repeating detail. See
 	 * `coverGrid` for why a stride is wrong here. */
-	coverage(target, width, feather) {
+	coverage(target: Rgb, width: number, feather: number): number {
 		const g = this.cover;
 		const e0 = widthToDist(width);
 		const fd = featherToDist(feather);
 		// Two reusable records, created once per scan rather than per sample.
-		const sA = {};
-		const sB = {};
+		const sA: Hsv = { h: 0, s: 0, v: 0, d: 0 };
+		const sB: Hsv = { h: 0, s: 0, v: 0, d: 0 };
 		let kept = 0;
 		const n = g.length / 3;
 		for (let i = 0; i < g.length; i += 3) {
@@ -116,12 +127,15 @@ export class Sampler {
 	}
 
 	/** The color to open the editor with — prominent, colorful, and readable. */
-	suggestedAccent() {
+	suggestedAccent(): Rgb {
 		return suggestedAccent(this.palette);
 	}
 }
 
-function fit(source, maxEdge) {
+function fit(
+	source: PixelSource,
+	maxEdge: number
+): { ctx: CanvasRenderingContext2D; w: number; h: number } {
 	const long = Math.max(source.width, source.height);
 	const scale = Math.min(1, maxEdge / long);
 	const w = Math.max(2, Math.round(source.width * scale));
@@ -130,13 +144,14 @@ function fit(source, maxEdge) {
 	c.width = w;
 	c.height = h;
 	const ctx = c.getContext('2d', { willReadFrequently: true });
+	if (!ctx) throw new Error('2D canvas unsupported');
 	ctx.drawImage(source, 0, 0, w, h);
 	return { ctx, w, h };
 }
 
 // --- showcase accents -----------------------------------------------------
 
-const hueOf = ({ r, g, b }) => {
+const hueOf = ({ r, g, b }: Rgb): number => {
 	const mx = Math.max(r, g, b);
 	const mn = Math.min(r, g, b);
 	if (mx === mn) return -1;
@@ -149,20 +164,36 @@ const hueOf = ({ r, g, b }) => {
 	return h < 0 ? h + 360 : h;
 };
 
-const satOf = ({ r, g, b }) => {
+const satOf = ({ r, g, b }: Rgb): number => {
 	const mx = Math.max(r, g, b);
 	const mn = Math.min(r, g, b);
 	return mx === 0 ? 0 : (mx - mn) / mx;
 };
+
+/** One palette entry scored for the accent pick. */
+interface Scored {
+	c: Rgb;
+	h: number;
+	s: number;
+	l: number;
+}
+
+/** The four showcase accents, keyed for the dictionary. */
+export type AccentKey = 'petals' | 'leaves' | 'sky' | 'shade';
+
+export interface ShowcaseAccent {
+	key: AccentKey;
+	rgb: Rgb;
+}
 
 /**
  * Four accents read out of the photo itself: the strongest warm hue, the
  * strongest green, the strongest cool, and the deepest shadow. Labels come
  * from the dictionary, so the keys are stable.
  */
-export function showcaseAccents(palette) {
-	const scored = palette.map((c) => ({ c, h: hueOf(c), s: satOf(c), l: (c.r + c.g + c.b) / 765 }));
-	const best = (pred) =>
+export function showcaseAccents(palette: Rgb[]): ShowcaseAccent[] {
+	const scored: Scored[] = palette.map((c) => ({ c, h: hueOf(c), s: satOf(c), l: (c.r + c.g + c.b) / 765 }));
+	const best = (pred: (h: number) => boolean) =>
 		scored
 			.filter((e) => e.h >= 0 && pred(e.h))
 			.sort((a, b) => b.s - a.s)[0];
@@ -172,7 +203,7 @@ export function showcaseAccents(palette) {
 	const cool = best((h) => h >= 170 && h < 320);
 	const shade = scored.filter((e) => e.l < 0.45).sort((a, b) => a.l - b.l)[0];
 
-	const picks = [
+	const picks: { key: AccentKey; entry: Scored | undefined }[] = [
 		{ key: 'petals', entry: warm || scored[0] },
 		{ key: 'leaves', entry: green || scored[1] },
 		{ key: 'sky', entry: cool || scored[2] },
@@ -180,7 +211,7 @@ export function showcaseAccents(palette) {
 	];
 
 	// Guarantee four distinct swatches even on a monochrome photo.
-	const seen = new Set();
+	const seen = new Set<string>();
 	return picks.map((p, i) => {
 		let rgb = p.entry?.c || palette[i] || { r: 252, g: 192, b: 0 };
 		while (seen.has(rgbToHex(rgb)) && palette.length) {

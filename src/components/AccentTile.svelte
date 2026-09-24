@@ -1,8 +1,8 @@
-<script>
+<script lang="ts">
 	/**
 	 * One tile in the comparison strip: the same photo, one accent.
 	 *
-	 * Renders through the shared offscreen renderer in gl.js rather than owning a
+	 * Renders through the shared offscreen renderer in gl.ts rather than owning a
 	 * WebGL context, and paints the result into a plain 2D canvas — so the tile
 	 * holds no GPU state and costs nothing while idle.
 	 *
@@ -12,10 +12,23 @@
 	 */
 	import { renderThumbnail } from '../lib/gl.js';
 	import { rgbToHex } from '../lib/color.js';
+	import type { Rgb, TextureSource } from '../lib/types.js';
 
-	let { source, target, label = '', width = 34, feather = 35 } = $props();
+	let {
+		source,
+		target,
+		label = '',
+		width = 34,
+		feather = 35
+	}: {
+		source: TextureSource;
+		target: Rgb;
+		label?: string;
+		width?: number;
+		feather?: number;
+	} = $props();
 
-	let canvasEl = $state(null);
+	let canvasEl = $state<HTMLCanvasElement | null>(null);
 	let lastKey = '';
 
 	const hex = $derived(rgbToHex(target));
@@ -23,10 +36,11 @@
 
 	$effect(() => {
 		if (!canvasEl || !source) return;
+		const canvas = canvasEl;
 
-		const paint = () => {
-			const w = canvasEl.clientWidth;
-			const h = canvasEl.clientHeight;
+		const paint = (): void => {
+			const w = canvas.clientWidth;
+			const h = canvas.clientHeight;
 			if (!w || !h) return;
 			const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
 			const pw = Math.round(w * dpr);
@@ -36,20 +50,20 @@
 			const key = `${pw}x${ph}:${hex}:${width}:${feather}`;
 			if (key === lastKey) return;
 			lastKey = key;
-			canvasEl.width = pw;
-			canvasEl.height = ph;
+			canvas.width = pw;
+			canvas.height = ph;
 			const rendered = renderThumbnail(
 				source,
 				{ target, width, feather, tone: 0, contrast: 0, preset: 0 },
 				pw,
 				ph
 			);
-			canvasEl.getContext('2d').drawImage(rendered, 0, 0);
+			canvas.getContext('2d')?.drawImage(rendered, 0, 0);
 		};
 
 		paint();
 		const ro = new ResizeObserver(paint);
-		ro.observe(canvasEl);
+		ro.observe(canvas);
 		return () => {
 			ro.disconnect();
 			lastKey = '';

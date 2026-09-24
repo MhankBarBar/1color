@@ -1,0 +1,39 @@
+{
+	/* Everything, tests included. `tsconfig.app.json` extends this to typecheck
+	   shipped code alone, without Node's globals. */
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		/* ES2024 for `Promise.withResolvers`, which the load-gate tests use to
+		   release decodes by hand instead of sleeping. */
+		"lib": ["ES2024", "DOM", "DOM.Iterable"],
+
+		/* Strict from the start. The point of moving to TypeScript was to let the
+		   compiler catch what the tests missed — the crop field mismatch that
+		   blanked the photo was exactly this class of bug, so turning strictness
+		   down would defeat the exercise.
+
+		   `noUncheckedIndexedAccess` is deliberately off. It would make every
+		   `data[i]` in the pixel loops `number | undefined`, demanding an assertion
+		   per channel across thousands of iterations. Those loops are bounded by
+		   construction, so it buys noise rather than safety. */
+		"strict": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"resolveJsonModule": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"noEmit": true,
+
+		"allowJs": false,
+		"types": ["vite/client", "node"]
+	},
+	"include": ["src/**/*.ts", "src/**/*.svelte", "src/**/*.d.ts"]
+}
