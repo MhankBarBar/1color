@@ -669,11 +669,15 @@
 
 	/* Icon-only button with an accessible name; matches the app's round controls. */
 	.iconbtn {
-		/* From the shared variable: a hardcoded size here outranks the touch
-		   breakpoint in app.css, so the button grew on a phone while the span
-		   holding its icon did not, and the icon sat off-centre. */
+		/* From the shared variable so the touch breakpoint in app.css can grow it.
+		   `padding: 0` and `flex: none` are load-bearing: the global `button` reset
+		   sets no padding, so the browser default widened the box past its height
+		   and the circle became an oval, and without `flex: none` the flex row in
+		   the bar could shrink it. */
 		width: var(--iconbtn-size);
 		height: var(--iconbtn-size);
+		flex: none;
+		padding: 0;
 		border-radius: 50%;
 		background: var(--ink-200);
 		display: grid;

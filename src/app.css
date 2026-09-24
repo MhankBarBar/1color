@@ -103,6 +103,10 @@ button {
 	color: inherit;
 	background: none;
 	border: 0;
+	/* Browsers give a button default padding, which widens it past any explicit
+	   `width` and turns a circle into an oval. The circular controls
+	   (`.iconbtn`, `.live__shutter`) set their own size, so it has to go. */
+	padding: 0;
 	cursor: pointer;
 }
 
@@ -648,10 +652,15 @@ svg {
    its content, which depends on the parent — and WebKit resolves the cycle to
    zero, so the icon vanished there while desktop guessed a value.
 
+   The span is sized to the icon, not to the button. Sizing it to the button
+   made it as large as the whole control while the button's content box is
+   smaller than that by its padding, so the span overflowed and pushed the glyph
+   to one side.
+
    `:not(.sr)` keeps the visually-hidden label span at its own 1px. */
 .iconbtn > span:not(.sr) {
-	width: var(--iconbtn-size);
-	height: var(--iconbtn-size);
+	width: 21px;
+	height: 21px;
 	display: grid;
 	place-items: center;
 }
