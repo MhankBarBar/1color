@@ -669,8 +669,11 @@
 
 	/* Icon-only button with an accessible name; matches the app's round controls. */
 	.iconbtn {
-		width: 34px;
-		height: 34px;
+		/* From the shared variable: a hardcoded size here outranks the touch
+		   breakpoint in app.css, so the button grew on a phone while the span
+		   holding its icon did not, and the icon sat off-centre. */
+		width: var(--iconbtn-size);
+		height: var(--iconbtn-size);
 		border-radius: 50%;
 		background: var(--ink-200);
 		display: grid;

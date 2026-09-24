@@ -10,6 +10,10 @@
 /* --- tokens -------------------------------------------------------------- */
 
 :root {
+	/* The toolbar control size. Declared here so the button and the span that
+	   holds its icon cannot disagree — they did, which put the icon off-centre. */
+	--iconbtn-size: 34px;
+
 	/* Surfaces, sampled from the app's own screenshots (rgb 9,9,10 etc). */
 	--ink-000: #09090a;
 	--ink-050: #101012;
@@ -634,7 +638,24 @@ svg {
 
    The toolbar button's icon is wrapped in a span rather than sitting directly
    inside the button, which is the shape every other icon in the app already
-   had. */
+   had.
+
+   The span itself must carry a definite width, not just the SVG inside it.
+   Every icon that rendered correctly on iOS had a wrapper with one
+   (`.mode__disc` 46px, `.panel__icon` 17px, `.live__idle > span` 100%); this one
+   did not, and an inline span inside a grid item has no width of its own. With
+   the SVG at `max-width: 100%` that is circular — the parent's width depends on
+   its content, which depends on the parent — and WebKit resolves the cycle to
+   zero, so the icon vanished there while desktop guessed a value.
+
+   `:not(.sr)` keeps the visually-hidden label span at its own 1px. */
+.iconbtn > span:not(.sr) {
+	width: var(--iconbtn-size);
+	height: var(--iconbtn-size);
+	display: grid;
+	place-items: center;
+}
+
 .iconbtn > span svg {
 	width: 21px;
 	height: 21px;
@@ -1389,9 +1410,11 @@ svg {
 		padding: 10px 8px;
 	}
 
-	.iconbtn {
-		width: 40px;
-		height: 40px;
+	/* Larger hit areas on touch. Set on the variable so the icon span grows with
+	   the button; a rule on `.iconbtn` alone never took effect, because the
+	   component's scoped `.iconbtn` rule outranks a bare class. */
+	:root {
+		--iconbtn-size: 40px;
 	}
 }
 
