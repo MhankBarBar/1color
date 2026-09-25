@@ -41,10 +41,27 @@ float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
 // Hue distance gated by saturation; falls back to a brightness match when the
 // target has no hue of its own. Must stay identical to accentDistance().
+//
+// The ratio test alone is not enough: near black it is meaningless, because
+// converting sRGB to linear compresses the channel spread. rgb(4,2,1) reports a
+// 0.75 ratio while being visually black, which made a near-black target act as a
+// hue carrier. The absolute spread in .w is the honest test there.
+//
+// The brightness comparison goes through sqrt for the same reason: linear light
+// squeezes every dark tone together, so a black target kept dark green leaves.
+// sqrt approximates the sRGB curve closely enough and is cheap here.
+//
+// The pixel must also be neutral itself, judged as its chroma minus the
+// target's: the saturation ratio cannot do it, because a neutral near-black
+// reports 0.31 and the leaves report 0.91, so no threshold separates them.
 float accentDist(vec3 a, vec3 b) {
 	vec4 A = hsv(a);
 	vec4 B = hsv(b);
-	if (B.y < 0.15) return min(1.0, abs(A.z - B.z) * 1.6);
+	if (B.y < 0.15 || B.w < 0.012) {
+		float bright = min(1.0, abs(sqrt(A.z) - sqrt(B.z)) * 1.6);
+		float gate = smoothstep(0.002, 0.008, A.w - B.w);
+		return max(bright, gate);
+	}
 	float gate = smoothstep(0.04, 0.25, min(A.y, B.y));
 	float dh = abs(A.x - B.x);
 	if (dh > 0.5) dh = 1.0 - dh;

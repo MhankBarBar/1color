@@ -62,9 +62,6 @@ const smoothstep = (e0: number, e1: number, x: number): number => {
  * array or object here would churn tens of thousands of short-lived values per
  * frame, which is exactly the garbage that made dragging a slider stutter — so
  * this fills a caller-provided record instead.
- *
- * The allocating wrapper that used to sit beside this was dead: nothing called
- * it, and only this core is ever used. TypeScript found that on the port.
  */
 function hsvInto(r: number, g: number, b: number, out: Hsv): Hsv {
 	const R = toLinear(r);
@@ -90,6 +87,27 @@ function hsvInto(r: number, g: number, b: number, out: Hsv): Hsv {
 
 /** Below this saturation ratio a color has no hue to speak of — a gray. */
 const NEUTRAL_SAT = 0.15;
+
+/**
+ * Below this *absolute* chroma a color has no hue to speak of, whatever its
+ * saturation ratio says.
+ *
+ * The ratio is meaningless near black, and the same file already relies on that
+ * fact when ranking the palette: rgb(4,2,1) reports 75% saturation while being
+ * visually black. The ratio is high only because converting sRGB to linear
+ * compresses the channel spread, so a near-black target used to pass the
+ * `NEUTRAL_SAT` test and be treated as a hue carrier.
+ *
+ * That made the showcase's "Shade" accent — read out of the photo's darkest
+ * region, rgb(4,2,1) — behave as a hue rather than as black. Its hue came out at
+ * 20 degrees, only 17 from the petals' 37, so at the default width the sunflower
+ * yellow stayed in color under a target the reader reads as "the shadows".
+ * Matching the target's brightness instead is what the accent is supposed to do.
+ *
+ * The leaf green rgb(19,59,3) sits at 0.041 and stays a hue carrier, which is
+ * correct: it is dark but genuinely green.
+ */
+const NEUTRAL_CHROMA = 0.012;
 
 /** The gate ramps over this saturation-ratio band. Kept low on purpose: the
  *  ratio is scale-invariant, so it stays meaningful for a pale petal (ratio
@@ -135,9 +153,32 @@ function distRgb(
 	const A = hsvInto(r, g, b, scratchA || { h: 0, s: 0, v: 0, d: 0 });
 	const B = hsvInto(target.r, target.g, target.b, scratchB || { h: 0, s: 0, v: 0, d: 0 });
 
-	if (B.s < NEUTRAL_SAT) {
-		const dl = A.v - B.v;
-		return Math.min(1, (dl < 0 ? -dl : dl) * 1.6);
+	// Either test alone is insufficient. The ratio catches a washed-out mid grey;
+	// the absolute chroma catches a near-black, whose ratio is meaningless.
+	if (B.s < NEUTRAL_SAT || B.d < NEUTRAL_CHROMA) {
+		// Compared through a square root, not directly. `v` is a linear-light
+		// value, and linear light compresses every dark tone into a narrow band:
+		// the leaf green rgb(19,59,3) sits at 0.0437 against a near-black's 0.0012,
+		// a gap of 0.04 — under the tolerance, so a black target kept the green
+		// leaves. The same gap in a perceptual space is 0.17, which reads the way
+		// the eye does. sqrt is a close enough stand-in for the sRGB curve and far
+		// cheaper than a pow in the coverage scan's inner loop.
+		const dl = Math.sqrt(A.v) - Math.sqrt(B.v);
+		const bright = Math.min(1, (dl < 0 ? -dl : dl) * 1.6);
+		// A colored pixel is not the same as a neutral one, however close its
+		// brightness is. Without this, a near-black target kept the dark green
+		// leaves: their absolute chroma is 0.0118, just under the floor above, so
+		// they took the brightness path and matched black.
+		//
+		// Judged as the pixel's chroma *minus the target's*, in absolute terms. The
+		// saturation ratio cannot be used here for the same reason it cannot be
+		// used for the target: a neutral near-black like rgb(14,12,10) reports 0.31,
+		// and the leaves report 0.91, so no threshold on the ratio separates the
+		// shadows this accent is named for from the foliage it must drop. Absolute
+		// chroma does: the shadows sit at 0.0013 against the target's 0.0017, while
+		// the leaves are seven times the target.
+		const gate = smoothstep(0.002, 0.008, A.d - B.d);
+		return bright > gate ? bright : gate;
 	}
 
 	const gate = smoothstep(SAT_LO, SAT_HI, A.s < B.s ? A.s : B.s);

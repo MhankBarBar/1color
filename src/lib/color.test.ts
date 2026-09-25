@@ -61,7 +61,15 @@ const sstep = (e0: number, e1: number, x: number): number => {
 function shaderDist(a: Rgb, b: Rgb): number {
 	const A = shaderHsv(a);
 	const B = shaderHsv(b);
-	if (B.s < 0.15) return Math.min(1, Math.abs(A.v - B.v) * 1.6);
+	// The absolute-spread test mirrors `B.w` in the fragment shader. Without it a
+	// near-black target is treated as a hue carrier, because the saturation ratio
+	// is meaningless there. The brightness comparison goes through sqrt so dark
+	// tones are compared perceptually, and the pixel must be neutral itself.
+	if (B.s < 0.15 || B.d < 0.012) {
+		const bright = Math.min(1, Math.abs(Math.sqrt(A.v) - Math.sqrt(B.v)) * 1.6);
+		const gate = sstep(0.002, 0.008, A.d - B.d);
+		return Math.max(bright, gate);
+	}
 	const gate = sstep(0.04, 0.25, Math.min(A.s, B.s));
 	let dh = Math.abs(A.h - B.h);
 	if (dh > 0.5) dh = 1 - dh;
@@ -184,6 +192,47 @@ test('a neutral target matches brightness instead of hue', () => {
 	assert.ok(matchAlpha({ r: 250, g: 250, b: 250 }, sky, 30, 40) < 0.5, 'white kept');
 	assert.ok(matchAlpha({ r: 12, g: 12, b: 14 }, sky, 30, 40) < 0.5, 'black kept');
 	assert.ok(matchAlpha(GOLD, sky, 30, 40) < 0.5, 'saturated color kept by a gray target');
+});
+
+test('a near-black target matches brightness, not the hue its ratio implies', () => {
+	// Regression. rgb(4,2,1) reports a 0.75 saturation ratio while being visually
+	// black — the ratio is high only because sRGB-to-linear compresses the channel
+	// spread. Testing the ratio alone made this target a hue carrier at 20 degrees,
+	// which at the default width admitted the sunflower yellow (37 degrees), so the
+	// showcase's "Shade" accent kept the petals in color.
+	const shadow = { r: 4, g: 2, b: 1 };
+	assert.ok(
+		matchAlpha(GOLD, shadow, 30, 40) < 0.5,
+		'the sunflower yellow survived a black target'
+	);
+	// A genuinely dark but colored target must still behave as a hue: the leaf
+	// green's absolute spread is 0.041, well clear of the floor.
+	const leaf = { r: 19, g: 59, b: 3 };
+	assert.ok(matchAlpha(leaf, leaf, 30, 40) > 0.9, 'a dark green stopped matching itself');
+	assert.ok(matchAlpha(GOLD, leaf, 30, 40) < 0.5, 'yellow kept by a green target');
+
+	// And the leaves must not survive the black target either. Linear-light
+	// brightness put them 0.04 apart, under the tolerance, so a black target kept
+	// the foliage; compared perceptually the gap is 0.17 and they drop.
+	assert.ok(
+		matchAlpha(leaf, shadow, 30, 40) < 0.5,
+		'the green leaves survived a black target'
+	);
+
+	// The exact pixel sampled out of the rendered showcase, where the leaves were
+	// still visibly green under the Shade accent. Its absolute chroma is 0.0118 —
+	// just under the floor — so it took the brightness path and matched black at
+	// 93%. A near-black target may only keep pixels that are themselves neutral.
+	const measuredLeaf = { r: 15, g: 30, b: 4 };
+	assert.ok(
+		matchAlpha(measuredLeaf, shadow, 30, 40) < 0.5,
+		'the measured leaf pixel survived a black target'
+	);
+	// Neutral shadows, which the accent is named for, must still be kept.
+	assert.ok(matchAlpha({ r: 14, g: 12, b: 10 }, shadow, 30, 40) > 0.5, 'neutral shadow dropped');
+	// A neutral well above the target's brightness is not "shade" and must drop —
+	// the accent targets the darkest region, not every grey in the photo.
+	assert.ok(matchAlpha({ r: 60, g: 58, b: 56 }, shadow, 30, 40) < 0.5, 'mid grey kept as shade');
 });
 
 // --- control response ------------------------------------------------------

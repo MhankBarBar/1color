@@ -23,8 +23,21 @@
 	--ink-400: #3a3a42;
 
 	--text: #f6f6f8;
-	--text-dim: #a3a3ac;
-	--text-faint: #6d6d76;
+	/* Raised from #a3a3ac / #6d6d76. The audit measured eleven labels below the
+	   WCAG AA 4.5:1 floor at 3.49–3.89:1, all of them `--text-faint` on the matte
+	   black — the compare hex codes, the panel label, the hero hint, the footer.
+	   Dim text is not the same as unreadable text. */
+	--text-dim: #c2c2cb;
+	--text-faint: #9a9aa5;
+
+	/* One scale for every size the interface sets, replacing the twelve ad-hoc
+	   values between 0.68rem and 0.92rem that made the page read as unfinished —
+	   a 2px step from micro label to body, so nothing sits at an accidental
+	   size. Display sizes stay separate because they are fluid. */
+	--t-xs: 0.6875rem; /* 11px — uppercase micro labels only */
+	--t-sm: 0.8125rem; /* 13px — dense UI: codes, values, chips */
+	--t-base: 0.9375rem; /* 15px — body, buttons, nav */
+	--t-lg: 1.0625rem; /* 17px — lede, wordmark */
 
 	/* The live accent. JS overwrites --accent / --accent-ink on :root. */
 	--accent: #fcc000;
@@ -143,7 +156,9 @@ svg {
 	font-size: clamp(2.6rem, 6.4vw, 5.1rem);
 	line-height: 0.98;
 	letter-spacing: -0.035em;
-	text-wrap: balance;
+	/* `pretty` avoids leaving one word on the last line — on a phone the headline
+	   broke as "Keep one color, lose the" / "rest." where `balance` is unsupported. */
+	text-wrap: pretty;
 }
 
 .display .tint {
@@ -161,13 +176,13 @@ svg {
 
 .lede {
 	color: var(--text-dim);
-	font-size: clamp(1rem, 1.4vw, 1.125rem);
+	font-size: var(--t-lg);
 	max-width: 46ch;
 }
 
 .eyebrow {
 	font-family: var(--font-mono);
-	font-size: 0.7rem;
+	font-size: var(--t-xs);
 	letter-spacing: 0.16em;
 	text-transform: uppercase;
 	color: var(--text-faint);
@@ -203,7 +218,7 @@ svg {
 	font-family: var(--font-display);
 	font-weight: 700;
 	letter-spacing: -0.02em;
-	font-size: 1.05rem;
+	font-size: var(--t-lg);
 }
 
 .brand__dot {
@@ -224,7 +239,7 @@ svg {
 	padding: 7px 13px;
 	border-radius: var(--radius-pill);
 	color: var(--text-dim);
-	font-size: 0.88rem;
+	font-size: var(--t-base);
 	transition: color 0.2s, background 0.2s;
 }
 
@@ -249,7 +264,7 @@ svg {
 .lang__opt {
 	padding: 5px 11px;
 	border-radius: var(--radius-pill);
-	font-size: 0.78rem;
+	font-size: var(--t-sm);
 	color: var(--text-dim);
 	transition: color 0.2s, background 0.2s;
 }
@@ -264,7 +279,7 @@ svg {
 
 .hero {
 	position: relative;
-	padding: clamp(40px, 6vw, 76px) 0 clamp(40px, 5vw, 64px);
+	padding: clamp(28px, 4vw, 56px) 0 clamp(32px, 4vw, 56px);
 	overflow: hidden;
 }
 
@@ -289,7 +304,7 @@ svg {
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	gap: clamp(30px, 4vw, 46px);
+	gap: clamp(22px, 3vw, 36px);
 }
 
 .hero__copy {
@@ -321,35 +336,114 @@ svg {
 }
 
 .hero__samples-label {
-	font-size: 0.8rem;
-	color: var(--text-faint);
+	font-size: var(--t-sm);
+	color: var(--text-dim);
 	white-space: nowrap;
 }
 
-@media (max-width: 480px) {
-	.hero__samples-label {
-		display: none;
+/* The samples get their own row once the button no longer fits beside them.
+   They used to sit beside it with the label hidden below 480px, which left three
+   unlabelled thumbnails next to a button and nothing saying what they were. */
+@media (max-width: 560px) {
+	.hero__samples {
+		flex: 1 1 100%;
+		flex-wrap: wrap;
+		gap: 8px 10px;
 	}
 }
 
-.hero__hint {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	color: var(--text-faint);
-	font-size: 0.84rem;
+/* --- hero art ------------------------------------------------------------ */
+
+/* Sits in the empty right-hand space of the copy row.
+
+   Absolutely positioned inside `.hero__copy` and stretched to that row's full
+   height, so it can never reach the editor card below — the card is opaque and
+   paints later, which is what buried an earlier attempt that was anchored to the
+   whole grid and sized in absolute pixels. Because the height comes from the row,
+   this fills the space without making the hero any taller. */
+.hero__art {
+	display: none;
 }
 
-.hero__hint svg {
-	flex: none;
-	opacity: 0.8;
+/* Only where there is genuinely room for it. At 820–1100px the copy and the fan
+   competed for the same row and the fan's spread pushed the shell 24px past its
+   own width — it is decoration, so the copy wins the space. */
+@media (min-width: 1100px) {
+	.hero__copy {
+		position: relative;
+		/* Keeps the copy clear of the field. */
+		padding-right: 42%;
+	}
+
+	.hero__art {
+		display: block;
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		/* Pulled in from the edge: the planes step sideways as they recede, and at
+		   `right: 0` the outermost one was clipped by the hero. The spread is
+		   proportional, so a percentage keeps it inside at every width. */
+		right: 8%;
+		width: 40%;
+		pointer-events: none;
+	}
 }
 
-/* The hint's icon span is sized inline at 15px; the SVG inside must follow it
-   rather than keep its own 24px intrinsic size. */
-.hero__hint span svg {
-	width: 15px;
-	height: 15px;
+.hero__fan {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	transform-style: preserve-3d;
+	transform: perspective(1100px) rotateX(12deg) rotateY(-26deg);
+	animation: hero-fan-drift 14s var(--ease) infinite alternate;
+}
+
+.hero__plane {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	/* Sized from the row's height, so the fan scales with the copy instead of
+	   overflowing it on a short row. */
+	height: 84%;
+	aspect-ratio: 3 / 4;
+	border-radius: 14px;
+	/* Each plane steps back, right, and turns slightly, so the stack reads as a
+	   receding fan rather than a pile. */
+	transform: translate(-50%, -50%) translateX(calc(var(--i) * 13%))
+		translateZ(calc(var(--i) * -46px)) rotate(calc(var(--i) * 2.5deg));
+	box-shadow: 0 20px 44px -18px rgb(0 0 0 / 0.85);
+}
+
+/* The nearest plane is the one color that survives; the rest step down a neutral
+   ramp. The product's own idea, as an object. */
+.hero__plane:nth-child(1) {
+	background: linear-gradient(150deg, var(--accent), color-mix(in oklab, var(--accent) 58%, #000));
+	box-shadow: 0 30px 70px -20px color-mix(in oklab, var(--accent) 40%, transparent);
+}
+
+.hero__plane:nth-child(2) {
+	background: linear-gradient(150deg, #3f3f47, #232329);
+}
+
+.hero__plane:nth-child(3) {
+	background: linear-gradient(150deg, #33333a, #1c1c21);
+}
+
+.hero__plane:nth-child(4) {
+	background: linear-gradient(150deg, #282830, #16161a);
+}
+
+.hero__plane:nth-child(5) {
+	background: linear-gradient(150deg, #202027, #121215);
+}
+
+@keyframes hero-fan-drift {
+	from {
+		transform: perspective(1100px) rotateX(12deg) rotateY(-26deg) translateY(-5px);
+	}
+	to {
+		transform: perspective(1100px) rotateX(8deg) rotateY(-18deg) translateY(5px);
+	}
 }
 
 /* --- buttons ------------------------------------------------------------- */
@@ -361,7 +455,7 @@ svg {
 	gap: 8px;
 	padding: 12px 20px;
 	border-radius: var(--radius-pill);
-	font-size: 0.92rem;
+	font-size: var(--t-base);
 	font-weight: 600;
 	letter-spacing: -0.01em;
 	transition: transform 0.18s var(--ease), background 0.2s, color 0.2s, opacity 0.2s;
@@ -436,15 +530,49 @@ svg {
 
 .editor__hex {
 	font-family: var(--font-mono);
-	font-size: 0.82rem;
+	font-size: var(--t-sm);
 	letter-spacing: 0.02em;
 	color: var(--text);
 }
 
-.editor__coverage {
-	font-family: var(--font-mono);
-	font-size: 0.74rem;
-	color: var(--text-faint);
+/* The gesture hint, beside the surface it describes. Pushed to the right edge
+   and dropped first when the bar runs out of room — the hex and coverage are
+   the readouts, this is only an instruction. */
+.editor__hint {
+	margin-left: auto;
+	padding-left: 14px;
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	color: var(--text-dim);
+	font-size: var(--t-sm);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.editor__hint-icon {
+	width: 15px;
+	height: 15px;
+	flex: none;
+	opacity: 0.8;
+}
+
+.editor__hint-icon svg {
+	width: 15px;
+	height: 15px;
+}
+
+/* The toolbar buttons already carry `margin-left: auto`; with the hint between
+   them and the readouts, both cannot claim the free space. */
+.editor__bar:has(.editor__hint) .editor__bar-actions {
+	margin-left: 12px;
+}
+
+@media (max-width: 860px) {
+	.editor__hint {
+		display: none;
+	}
 }
 
 /* Photo first, controls under it — the app's own proportions. The stage is
@@ -539,7 +667,7 @@ svg {
 
 .dropzone__text {
 	color: var(--text-dim);
-	font-size: 0.9rem;
+	font-size: var(--t-base);
 	line-height: 1.5;
 	max-width: 34ch;
 }
@@ -601,36 +729,54 @@ svg {
 	border-top: 1px solid rgb(255 255 255 / 0.06);
 }
 
-.panel__head {
+/* The fold control.
+   A labelled button, not a grab bar. It was a 3px pill with a faint chevron
+   first, which a fresh reader could not tell apart from a decorative divider —
+   and when it was hidden inside the panel entirely, closing the panel removed the
+   only way to reopen it. It is now a visible, named control that renders in both
+   states. */
+.panel__grip {
 	display: flex;
 	align-items: center;
-	gap: 9px;
+	justify-content: center;
+	gap: 7px;
 	width: 100%;
 	padding: 11px 14px;
-	text-align: left;
+	color: var(--text-dim);
+	/* The card's own surface, so the control reads as part of the toolbar above it
+	   rather than as a strip belonging to the darker panel. It was on --ink-050,
+	   the panel's fill, which made it look like a divider between two surfaces. */
+	background: var(--ink-100);
+	/* No divider: the mode row above is the same surface, so the two read as one
+	   toolbar. A hairline here would redraw the divider this was fixed to remove. */
+	font-size: var(--t-sm);
+	transition: color 0.2s, background 0.2s;
 }
 
-.panel__title {
-	font-size: 0.86rem;
-	font-weight: 600;
-	letter-spacing: -0.01em;
+.panel__grip:hover {
+	color: var(--text);
+	background: var(--ink-200);
 }
 
-.panel__icon {
-	width: 17px;
-	height: 17px;
+.panel__grip-label {
+	font-weight: 500;
+}
+
+.panel__grip-chevron {
+	width: 15px;
+	height: 15px;
 	flex: none;
-	color: var(--accent);
-	transition: color 0.35s var(--ease);
+	/* The icon points down; open, the panel folds downward, so the affordance
+	   points up. Collapsed, it points down — the direction the panel opens into. */
+	transform: rotate(180deg);
+	transition: transform 0.2s var(--ease);
 }
 
-.panel__chevron {
-	margin-left: auto;
-	color: var(--text-faint);
+.panel__grip:not(.is-open) .panel__grip-chevron {
+	transform: rotate(0deg);
 }
 
-.panel__icon svg,
-.panel__chevron svg {
+.panel__grip-chevron svg {
 	width: 100%;
 	height: 100%;
 }
@@ -646,7 +792,7 @@ svg {
 
    The span itself must carry a definite width, not just the SVG inside it.
    Every icon that rendered correctly on iOS had a wrapper with one
-   (`.mode__disc` 46px, `.panel__icon` 17px, `.live__idle > span` 100%); this one
+   (`.mode__disc` 46px, `.live__idle > span` 100%); this one
    did not, and an inline span inside a grid item has no width of its own. With
    the SVG at `max-width: 100%` that is circular — the parent's width depends on
    its content, which depends on the parent — and WebKit resolves the cycle to
@@ -674,7 +820,9 @@ svg {
 	display: flex;
 	flex-direction: column;
 	gap: 14px;
-	padding: 0 14px 16px;
+	/* Top padding, not just sides and bottom: the fold control now sits directly
+	   above this, so with none the first label ("Colors in this photo") touched it. */
+	padding: 14px 14px 16px;
 	/* Bounded so switching mode does not resize the card by a large margin.
 	   The switcher sits above this, so it never moves; this only stops the card
 	   from visibly collapsing when you switch from a tall mode to a short one.
@@ -682,9 +830,29 @@ svg {
 	min-height: 172px;
 }
 
+/* A computed readout inside a panel: label left, value right, like a slider row
+   but not tied to a control. */
+.panel__readout {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	font-size: var(--t-sm);
+	color: var(--text-dim);
+}
+
+.panel__readout > span {
+	min-width: 0;
+}
+
+.panel__readout .mono {
+	flex: none;
+	color: var(--text);
+}
+
 /* Section label inside a panel, e.g. "Colors in this photo". */
 .panel__label {
-	font-size: 0.72rem;
+	font-size: var(--t-xs);
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: var(--text-faint);
@@ -702,13 +870,21 @@ svg {
 	align-items: baseline;
 	justify-content: space-between;
 	gap: 10px;
-	font-size: 0.8rem;
+	font-size: var(--t-sm);
 	color: var(--text-dim);
 }
 
+/* The audit measured this row 2px wider than its own box, so the label and its
+   value could not both shrink. A flex item's default `min-width: auto` is its
+   content width, which refuses to go below the longest word. */
+.slider__row > span {
+	min-width: 0;
+}
+
 .slider__row .mono {
-	font-size: 0.78rem;
+	font-size: var(--t-sm);
 	color: var(--text);
+	flex: none;
 }
 
 .slider input[type='range'] {
@@ -716,6 +892,10 @@ svg {
 	appearance: none;
 	width: 100%;
 	height: 26px;
+	/* The UA gives a range input `margin: 2px`, which the global reset does not
+	   clear. With `width: 100%` that pushed it 2px past its own label — the audit
+	   measured the row at 412px inside a 410px box. */
+	margin: 0;
 	background: none;
 	accent-color: var(--accent);
 	cursor: pointer;
@@ -774,7 +954,7 @@ svg {
 	min-width: 0;
 	padding: 8px 8px;
 	border-radius: 11px;
-	font-size: 0.78rem;
+	font-size: var(--t-sm);
 	color: var(--text-dim);
 	text-align: center;
 	white-space: nowrap;
@@ -811,7 +991,7 @@ svg {
 	gap: 6px;
 	padding: 4px 0;
 	color: var(--text-dim);
-	font-size: 0.68rem;
+	font-size: var(--t-sm);
 	letter-spacing: 0.01em;
 	border-radius: var(--radius-ctl);
 }
@@ -860,7 +1040,7 @@ svg {
 	gap: 5px;
 	padding: 4px 0;
 	color: var(--text-dim);
-	font-size: 0.68rem;
+	font-size: var(--t-sm);
 }
 
 .shape__disc {
@@ -924,7 +1104,7 @@ svg {
 	border-radius: var(--radius-ctl);
 	background: var(--ink-200);
 	font-family: var(--font-mono);
-	font-size: 0.7rem;
+	font-size: var(--t-xs);
 	color: var(--text-dim);
 	transition: background 0.2s, color 0.2s;
 }
@@ -952,7 +1132,7 @@ svg {
 	border-radius: var(--radius-pill);
 	background: var(--ink-200);
 	color: var(--text-dim);
-	font-size: 0.78rem;
+	font-size: var(--t-sm);
 	transition: background 0.2s, color 0.2s;
 }
 
@@ -985,7 +1165,7 @@ svg {
 	background: var(--ink-300);
 	color: var(--text);
 	font-family: var(--font-body);
-	font-size: 0.72rem;
+	font-size: var(--t-sm);
 	font-weight: 500;
 	letter-spacing: 0;
 	white-space: nowrap;
@@ -1027,7 +1207,7 @@ svg {
 	border-radius: var(--radius-pill);
 	background: var(--ink-300);
 	color: var(--text);
-	font-size: 0.84rem;
+	font-size: var(--t-sm);
 	box-shadow: 0 12px 32px -10px rgb(0 0 0 / 0.85);
 	z-index: 60;
 }
@@ -1041,7 +1221,7 @@ svg {
 	border-radius: var(--radius-ctl);
 	background: var(--ink-200);
 	color: var(--text-dim);
-	font-size: 0.82rem;
+	font-size: var(--t-sm);
 	line-height: 1.5;
 	max-width: 46ch;
 }
@@ -1057,7 +1237,7 @@ svg {
 /* --- sections ------------------------------------------------------------ */
 
 .band {
-	padding: clamp(56px, 8vw, 108px) 0;
+	padding: clamp(48px, 6vw, 88px) 0;
 	border-top: 1px solid rgb(255 255 255 / 0.06);
 }
 
@@ -1072,18 +1252,149 @@ svg {
 /* The tile takes the photo's own aspect ratio (set inline), and the grid columns
    set the width — so the canvas box always matches the photo exactly. No height
    clamp: clamping would break that match and reintroduce the stretch this is
-   here to prevent. The strip aligns to the top so differing heights line up. */
+   here to prevent. The strip aligns to the top so differing heights line up.
+
+   `auto-fit` rather than a fixed count: the strip is five tiles once a photo is
+   loaded (the original plus four accents) and three before that, and a hard
+   `repeat(4, 1fr)` left one tile orphaned on a second row. */
 .compare {
 	display: grid;
-	grid-template-columns: repeat(4, 1fr);
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr));
 	gap: 16px;
 	align-items: start;
+}
+
+/* The showcase: one large frame, the palette as the control.
+   The frame leads on wide screens and the picks sit beside it; on a phone the
+   frame leads and the picks follow, because the photo is the argument and the
+   controls are how you test it. */
+.showcase {
+	display: grid;
+	grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+	gap: clamp(20px, 3vw, 44px);
+	align-items: center;
+}
+
+.showcase__frame {
+	border-radius: var(--radius-panel);
+	overflow: hidden;
+	background: var(--ink-100);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+}
+
+.showcase__side {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	min-width: 0;
+}
+
+.showcase__caption {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: clamp(1.2rem, 2vw, 1.6rem);
+	letter-spacing: -0.02em;
+}
+
+.showcase__code {
+	margin-left: auto;
+	font-size: var(--t-sm);
+	font-weight: 400;
+	color: var(--text-faint);
+}
+
+.showcase__picks {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.showcase__pick {
+	display: flex;
+	align-items: center;
+	gap: 11px;
+	padding: 11px 13px;
+	border-radius: var(--radius-ctl);
+	color: var(--text-dim);
+	font-size: var(--t-base);
+	text-align: left;
+	transition: background 0.2s, color 0.2s;
+}
+
+.showcase__pick:hover {
+	color: var(--text);
+	background: rgb(255 255 255 / 0.05);
+}
+
+.showcase__pick.is-on {
+	color: var(--text);
+	background: var(--ink-200);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+.showcase__dot {
+	width: 15px;
+	height: 15px;
+	border-radius: 50%;
+	flex: none;
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
+}
+
+/* The untouched photo is every color, so its mark is the whole wheel rather than
+   one swatch. */
+.showcase__dot--plain {
+	background: conic-gradient(#ff4d4d, #ffd84d, #6ee06e, #4dd8ff, #5b6bff, #d94dff, #ff4d4d);
+}
+
+.showcase__pick-hex {
+	margin-left: auto;
+	font-size: var(--t-xs);
+	color: var(--text-faint);
+}
+
+@media (max-width: 860px) {
+	.showcase {
+		grid-template-columns: 1fr;
+		gap: 18px;
+	}
+
+	/* On a phone the picks become a wrapping row of chips under the photo, so the
+	   photo keeps the full width instead of being squeezed beside a list. */
+	.showcase__picks {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.showcase__pick {
+		padding: 8px 12px;
+		border-radius: var(--radius-pill);
+		background: var(--ink-200);
+		font-size: var(--t-sm);
+	}
+
+	.showcase__pick-hex {
+		display: none;
+	}
 }
 
 .compare__item {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
+}
+
+/* Five tiles in a two-column grid leave one orphaned on its own row, which reads
+   as broken masonry. On a narrow screen the original instead takes the full
+   width, so the section reads exactly as its heading does: the photo, then the
+   four colors. */
+@media (max-width: 700px) {
+	.compare__item:first-child {
+		grid-column: 1 / -1;
+	}
 }
 
 .compare__figure {
@@ -1116,23 +1427,37 @@ svg {
 }
 
 .compare__label {
-	font-size: 0.84rem;
+	font-size: var(--t-sm);
 	color: var(--text-dim);
 }
 
 .compare__hex {
 	margin-left: auto;
 	font-family: var(--font-mono);
-	font-size: 0.72rem;
+	font-size: var(--t-sm);
 	color: var(--text-faint);
 }
 
-/* Live camera */
+/* Live camera.
+   Single column by default: the viewfinder takes the full width and the copy
+   follows it. This section exists for phones, and the earlier two-column layout
+   put the heading first and the camera second, which pushed the preview below the
+   fold on the device it is for. Desktop opts into two columns below. */
 .live {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-	gap: clamp(28px, 4vw, 56px);
-	align-items: center;
+	grid-template-columns: 1fr;
+	gap: 22px;
+}
+
+.live__camera {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	min-width: 0;
+}
+
+.live__copy {
+	min-width: 0;
 }
 
 .live__frame {
@@ -1140,6 +1465,8 @@ svg {
 	border-radius: var(--radius-card);
 	overflow: hidden;
 	background: #000;
+	/* 3:4 is the phone camera's own shape, so the preview matches what the
+	   captured frame will be. Idle it is shorter — see the phone breakpoint. */
 	aspect-ratio: 3 / 4;
 	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), var(--shadow-lift);
 	display: grid;
@@ -1159,38 +1486,51 @@ svg {
 	pointer-events: none;
 }
 
-/* The idle camera mark. Its span is already fixed at 34px in the markup, so the
-   icon fills that rather than keeping its own intrinsic size. */
-.live__idle > span svg {
-	width: 100%;
-	height: 100%;
-}
-
 .live__idle {
 	grid-area: 1 / 1;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 12px;
-	padding: 32px;
+	justify-content: center;
+	gap: 14px;
+	padding: 28px;
 	text-align: center;
-	color: var(--text-faint);
-	font-size: 0.86rem;
-	max-width: 30ch;
+	color: var(--text-dim);
+	font-size: var(--t-base);
+	max-width: 32ch;
 }
 
+.live__idle-mark {
+	width: 40px;
+	height: 40px;
+	color: var(--accent);
+}
+
+/* The idle mark's span carries the size; the injected SVG follows it. */
+.live__idle-mark svg {
+	width: 100%;
+	height: 100%;
+}
+
+.live__idle-note {
+	color: var(--text-faint);
+	font-size: var(--t-sm);
+	max-width: 28ch;
+}
+
+/* The shutter bar, directly under the viewfinder. */
 .live__controls {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 14px;
 	flex-wrap: wrap;
-	margin-top: 22px;
 }
 
 .live__shutter {
-	width: 54px;
-	height: 54px;
+	width: 62px;
+	height: 62px;
 	border-radius: 50%;
+	flex: none;
 	background: var(--ink-200);
 	box-shadow: inset 0 0 0 3px var(--text);
 	transition: transform 0.16s var(--ease), background 0.2s;
@@ -1204,13 +1544,33 @@ svg {
 	transform: scale(0.94);
 }
 
+/* From a tablet up there is room to sit the copy beside the camera. */
+@media (min-width: 860px) {
+	.live {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+		gap: clamp(28px, 4vw, 56px);
+		align-items: center;
+	}
+
+	/* Copy first on desktop, matching the rest of the page's reading order. */
+	.live__copy {
+		order: -1;
+	}
+
+	.live__frame {
+		max-width: 440px;
+		margin-inline: auto;
+		width: 100%;
+	}
+}
+
 /* --- footer -------------------------------------------------------------- */
 
 .footer {
 	padding: 40px 0 56px;
 	border-top: 1px solid rgb(255 255 255 / 0.06);
 	color: var(--text-faint);
-	font-size: 0.82rem;
+	font-size: var(--t-sm);
 }
 
 .footer__row {
@@ -1226,7 +1586,7 @@ svg {
 	margin-top: 12px;
 	max-width: 62ch;
 	color: var(--text-faint);
-	font-size: 0.76rem;
+	font-size: var(--t-xs);
 	line-height: 1.6;
 	opacity: 0.85;
 }
@@ -1277,20 +1637,12 @@ svg {
 	}
 }
 
-/* Compare strip: 4 across only when there is genuinely room. */
-@media (max-width: 1000px) {
-	.compare {
-		grid-template-columns: repeat(2, 1fr);
-	}
-
-	.live {
-		grid-template-columns: 1fr;
-		gap: 32px;
-	}
-
-	.live__frame {
-		max-width: 460px;
-		margin-inline: auto;
+/* The idle viewfinder is shorter than the live one: a 3:4 box is right once a
+   feed is streaming, but before the camera is on it is a large empty rectangle.
+   Scoped to phones — the two-column desktop layout gives it its own height. */
+@media (max-width: 859px) {
+	.live__frame:not(.is-live) {
+		aspect-ratio: 4 / 3;
 	}
 }
 
@@ -1334,7 +1686,7 @@ svg {
 	.nav__link {
 		flex: 0 0 auto;
 		padding: 9px 14px;
-		font-size: 0.82rem;
+		font-size: var(--t-sm);
 		background: var(--ink-200);
 	}
 
@@ -1351,12 +1703,26 @@ svg {
 		font-size: clamp(2rem, 9vw, 2.6rem);
 	}
 
+	/* The first screen has to reach the editor card. Measured on a 390px
+	   viewport, the copy block alone was pushing the photo past the fold, so
+	   everything above it is tightened: shallower padding, a tighter copy stack,
+	   and sample thumbnails small enough that the row does not wrap. */
 	.hero {
-		padding-top: 24px;
+		padding-top: 16px;
+		padding-bottom: 32px;
 	}
 
 	.hero__copy {
-		gap: 16px;
+		gap: 12px;
+	}
+
+	.hero__actions {
+		gap: 10px;
+	}
+
+	.samples__btn {
+		width: 52px;
+		height: 52px;
 	}
 
 	.editor {
@@ -1365,11 +1731,6 @@ svg {
 
 	.editor__stage {
 		padding: 8px;
-	}
-
-	.compare {
-		grid-template-columns: 1fr 1fr;
-		gap: 12px;
 	}
 
 	.compare__hex {
@@ -1386,13 +1747,9 @@ svg {
 }
 
 @media (max-width: 380px) {
-	.compare {
-		grid-template-columns: 1fr;
-	}
-
 	.nav__link {
 		padding: 9px 12px;
-		font-size: 0.78rem;
+		font-size: var(--t-sm);
 	}
 }
 

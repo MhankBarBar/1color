@@ -9,6 +9,7 @@
 	 * photo, Save) scrolled out of view.
 	 */
 	import Stage from './Stage.svelte';
+	import { tick } from 'svelte';
 	import { icon } from '../lib/icons.js';
 	import { rgbToHex, pushRecent } from '../lib/color.js';
 	import { shapeForTool, SHAPE_TOOLS } from '../lib/mask.js';
@@ -98,7 +99,9 @@
 	let quality = $state<QualityId>('std');
 	let align = $state<Align>('left');
 	let showSwatch = $state(false);
-	let showCode = $state(true);
+	// Off by default. It used to start on, which meant every export carried a hex
+	// string nobody asked for — an overlay is a choice, not a default.
+	let showCode = $state(false);
 	let showMix = $state(false);
 
 	let recent = $state<Rgb[]>([]);
@@ -147,7 +150,8 @@
 		['white', 'out.frame.white'],
 		['black', 'out.frame.black'],
 		['accent', 'out.frame.accent'],
-		['custom', 'out.frame.custom']
+		['custom', 'out.frame.custom'],
+		['cheki', 'out.frame.cheki']
 	];
 
 	// Where the swatch / code / mix block sits across the band.
@@ -157,7 +161,6 @@
 		['right', 'out.align.right']
 	];
 
-	// Four modes, mirroring the app's mode row plus its output screen.
 	const MODES: Array<{ id: Mode; key: string; icon: 'accent' | 'range' | 'mono' | 'output' }> = [
 		{ id: 'accent', key: 'panel.accent', icon: 'accent' },
 		{ id: 'range', key: 'panel.range', icon: 'range' },
@@ -180,11 +183,6 @@
 	const hex = $derived(rgbToHex(target));
 
 	const coverage = $derived.by(() => (sampler ? sampler.coverage(target, width, feather) : 0));
-
-	/** The active mode's entry. Falls back to the first, so the panel header always
-	 *  has an icon and a label — the inline `find` returned a maybe-undefined and
-	 *  the markup dereferenced it twice. */
-	const activeMode = $derived(MODES.find((m) => m.id === mode) ?? MODES[0]);
 
 	const palette = $derived(sampler ? sampler.palette : []);
 	const ratioList = $derived([{ id: 'original' }, ...RATIOS.slice(1)]);
@@ -289,7 +287,7 @@
 		quality = 'std';
 		align = 'left';
 		showSwatch = false;
-		showCode = true;
+		showCode = false;
 		showMix = false;
 		chooseShape('circle');
 		if (sampler) target = sampler.suggestedAccent();
@@ -359,7 +357,14 @@
 	<div class="editor__bar">
 		<span class="editor__swatch" style:background={hex} aria-hidden="true"></span>
 		<span class="editor__hex">{hex}</span>
-		<span class="editor__coverage">{(coverage * 100).toFixed(0)}%</span>
+		<!-- The gesture instruction belongs beside the surface it describes. It sat
+		     in the hero copy, four rows away from the photo, where it was the
+		     faintest text on the page — an instruction for a canvas the reader had
+		     not reached yet. -->
+		<span class="editor__hint">
+			<span class="editor__hint-icon" aria-hidden="true">{@html icon('hand')}</span>
+			{t('stage.hint')}
+		</span>
 
 		<div class="editor__bar-actions">
 			<button
@@ -433,15 +438,27 @@
 		<p class="toast" role="status">{toast}</p>
 	{/if}
 
-	<!-- Mode switcher, as circular buttons — the app's own navigation. -->
 	<div class="modes">
 		{#each MODES as m (m.id)}
 			<button
 				class="mode"
 				class:is-on={mode === m.id}
-				onclick={() => {
+				aria-expanded={mode === m.id ? panelOpen : undefined}
+				onclick={(e) => {
+					// One job: switch mode, and make sure the controls are showing.
+					// Folding is the grip's job below, so this control cannot be the
+					// only way back — which is exactly what it was, and closing the
+					// panel then left no visible affordance to reopen it.
+					const row = e.currentTarget.parentElement;
+					const before = row ? row.getBoundingClientRect().top : 0;
 					mode = m.id;
 					panelOpen = true;
+					if (row) {
+						void tick().then(() => {
+							const after = row.getBoundingClientRect().top;
+							if (after !== before) scrollBy(0, after - before);
+						});
+					}
 				}}
 			>
 				<span class="mode__disc" aria-hidden="true">{@html icon(m.icon)}</span>
@@ -450,14 +467,29 @@
 		{/each}
 	</div>
 
-{#if panelOpen}
-		<div class="panel">
-			<button class="panel__head" onclick={() => (panelOpen = false)} aria-expanded="true">
-				<span class="panel__icon" aria-hidden="true">{@html icon(activeMode.icon)}</span>
-				<span class="panel__title">{t(activeMode.key)}</span>
-				<span class="panel__chevron" aria-hidden="true">{@html icon('chevronDown')}</span>
-			</button>
+	<!--
+		The fold handle, and the panel's only visible affordance.
 
+		It deliberately sits outside the panel's `{#if}`. Inside it, closing the
+		panel removed the very control that reopens it, so the only way back was to
+		guess that the mode row doubles as a toggle — which nobody guesses.
+
+		A grab bar rather than a title bar: the mode row directly above already
+		names the active mode, so a header here said "Color" twice in one card.
+	-->
+	<button
+		class="panel__grip"
+		class:is-open={panelOpen}
+		onclick={() => (panelOpen = !panelOpen)}
+		aria-expanded={panelOpen}
+		aria-controls="editor-panel"
+	>
+		<span class="panel__grip-chevron" aria-hidden="true">{@html icon('chevronDown')}</span>
+		<span class="panel__grip-label">{panelOpen ? t('panel.hide') : t('panel.show')}</span>
+	</button>
+
+	{#if panelOpen}
+		<div class="panel" id="editor-panel">
 			<div class="panel__body">
 				{#if mode === 'accent'}
 					{#if recent.length}
@@ -503,6 +535,14 @@
 						</span>
 						<input type="range" min="0" max="100" bind:value={feather} />
 					</label>
+
+					<!-- The share of the photo keeping its color, next to the two
+					     controls that set it. In the top bar it was an unlabelled
+					     number with nothing to explain it. -->
+					<p class="panel__readout">
+						<span>{t('editor.coverage')}</span>
+						<span class="mono">{(coverage * 100).toFixed(0)}%</span>
+					</p>
 				{/if}
 
 				{#if mode === 'range'}
@@ -653,10 +693,6 @@
 
 			</div>
 		</div>
-	{:else}
-		<button class="panel__collapsed" onclick={() => (panelOpen = true)}>
-			{t(activeMode.key)}
-		</button>
 	{/if}
 </div>
 
@@ -707,28 +743,6 @@
 		overflow: hidden;
 		clip-path: inset(50%);
 		white-space: nowrap;
-	}
-
-	.panel__chevron {
-		width: 15px;
-		height: 15px;
-		margin-left: auto;
-		color: var(--text-faint);
-		transform: rotate(180deg);
-	}
-
-	.panel__collapsed {
-		width: 100%;
-		padding: 11px 16px;
-		border-top: 1px solid rgb(255 255 255 / 0.06);
-		background: var(--ink-050);
-		color: var(--text-dim);
-		font-size: 0.82rem;
-		text-align: left;
-	}
-
-	.panel__collapsed:hover {
-		color: var(--text);
 	}
 
 	.frame-pick {

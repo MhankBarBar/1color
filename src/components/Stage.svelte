@@ -624,16 +624,10 @@
 		return null;
 	}
 
-	// Overlay geometry in PIXELS, not normalised units.
-	//
-	// The overlay used to be an SVG with viewBox="0 0 1 1" and
-	// preserveAspectRatio="none", so a stroke-width of 0.02 scaled differently
-	// on x and y — brush strokes came out elliptical instead of round. Emitting
-	// pixel coordinates with a 1:1 viewBox makes stroke widths uniform.
-	//
 	// Region geometry lives in image space while this SVG is in view space, so
 	// every point goes through the crop mapping. Without that, cropping a ratio
-	// would slide the region off the pixels it was drawn over.
+	// would slide the region off the pixels it was drawn over. The pixel-space
+	// viewBox itself is explained above, where the overlay's units are declared.
 	/** View-space pixels for a point stored in image space. */
 	const toPx = (p: Point): Point => {
 		const v = imageToView(p);
@@ -722,6 +716,7 @@
 			innerW: framed.innerW,
 			innerH: framed.innerH,
 			pad: framed.pad,
+			padBottom: framed.padBottom,
 			width: framed.outW,
 			height: framed.outH,
 			hasFrame: !!framed.hex,
@@ -747,7 +742,9 @@
 			style:width={`${fit.w}px`}
 			style:height={`${fit.h}px`}
 			style:background={framed.hex || 'transparent'}
-			style:padding={framed.hex ? `${Math.round(fit.w * framed.padFrac)}px` : '0'}
+			style:padding={framed.hex
+				? `${Math.round(fit.w * framed.padFrac)}px ${Math.round(fit.w * framed.padFrac)}px ${Math.round(fit.h * framed.padBottomFrac)}px`
+				: '0'}
 		>
 			<div
 				class="stage__inner"
@@ -843,7 +840,7 @@
 					<canvas
 						class="stage__compose"
 						bind:this={composeEl}
-						style:inset={`-${Math.round(fit.w * framed.padFrac)}px`}
+						style:inset={`-${Math.round(fit.w * framed.padFrac)}px -${Math.round(fit.w * framed.padFrac)}px -${Math.round(fit.h * framed.padBottomFrac)}px`}
 						style:width={`${fit.w}px`}
 						style:height={`${fit.h}px`}
 						aria-hidden="true"
@@ -1183,7 +1180,7 @@
 		background: rgb(0 0 0 / 0.8);
 		color: #f6f6f8;
 		font-family: var(--font-body);
-		font-size: 0.8rem;
+		font-size: var(--t-base);
 		line-height: 1.5;
 		text-align: left;
 	}
