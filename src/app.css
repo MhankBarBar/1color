@@ -365,7 +365,10 @@ svg {
 	display: none;
 }
 
-@media (min-width: 820px) {
+/* Only where there is genuinely room for it. At 820–1100px the copy and the fan
+   competed for the same row and the fan's spread pushed the shell 24px past its
+   own width — it is decoration, so the copy wins the space. */
+@media (min-width: 1100px) {
 	.hero__copy {
 		position: relative;
 		/* Keeps the copy clear of the field. */
@@ -377,7 +380,10 @@ svg {
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		right: 0;
+		/* Pulled in from the edge: the planes step sideways as they recede, and at
+		   `right: 0` the outermost one was clipped by the hero. The spread is
+		   proportional, so a percentage keeps it inside at every width. */
+		right: 8%;
 		width: 40%;
 		pointer-events: none;
 	}
@@ -723,38 +729,51 @@ svg {
 	border-top: 1px solid rgb(255 255 255 / 0.06);
 }
 
-/* The fold affordance. Deliberately not a title bar: a 34px strip with a pill
-   and a chevron, centred, so the panel has a visible way out without repeating
-   the mode name that sits directly above it. The whole strip is the hit area. */
+/* The fold control.
+   A labelled button, not a grab bar. It was a 3px pill with a faint chevron
+   first, which a fresh reader could not tell apart from a decorative divider —
+   and when it was hidden inside the panel entirely, closing the panel removed the
+   only way to reopen it. It is now a visible, named control that renders in both
+   states. */
 .panel__grip {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 8px;
+	gap: 7px;
 	width: 100%;
-	height: 34px;
-	color: var(--text-faint);
+	padding: 11px 14px;
+	color: var(--text-dim);
+	/* The card's own surface, so the control reads as part of the toolbar above it
+	   rather than as a strip belonging to the darker panel. It was on --ink-050,
+	   the panel's fill, which made it look like a divider between two surfaces. */
+	background: var(--ink-100);
+	/* No divider: the mode row above is the same surface, so the two read as one
+	   toolbar. A hairline here would redraw the divider this was fixed to remove. */
+	font-size: var(--t-sm);
 	transition: color 0.2s, background 0.2s;
 }
 
 .panel__grip:hover {
 	color: var(--text);
-	background: rgb(255 255 255 / 0.04);
+	background: var(--ink-200);
 }
 
-.panel__grip-bar {
-	width: 44px;
-	height: 3px;
-	border-radius: 999px;
-	background: currentColor;
-	opacity: 0.5;
+.panel__grip-label {
+	font-weight: 500;
 }
 
 .panel__grip-chevron {
-	width: 14px;
-	height: 14px;
-	/* The icon points down; the panel folds down, so the affordance points up. */
+	width: 15px;
+	height: 15px;
+	flex: none;
+	/* The icon points down; open, the panel folds downward, so the affordance
+	   points up. Collapsed, it points down — the direction the panel opens into. */
 	transform: rotate(180deg);
+	transition: transform 0.2s var(--ease);
+}
+
+.panel__grip:not(.is-open) .panel__grip-chevron {
+	transform: rotate(0deg);
 }
 
 .panel__grip-chevron svg {
@@ -801,7 +820,9 @@ svg {
 	display: flex;
 	flex-direction: column;
 	gap: 14px;
-	padding: 0 14px 16px;
+	/* Top padding, not just sides and bottom: the fold control now sits directly
+	   above this, so with none the first label ("Colors in this photo") touched it. */
+	padding: 14px 14px 16px;
 	/* Bounded so switching mode does not resize the card by a large margin.
 	   The switcher sits above this, so it never moves; this only stops the card
 	   from visibly collapsing when you switch from a tall mode to a short one.

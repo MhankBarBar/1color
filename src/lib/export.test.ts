@@ -206,6 +206,79 @@ test('frame padding grows with the margin and stays within the frame', () => {
 	assert.ok(framePad(100) < 0.5, 'padding must leave the photo the majority of the frame');
 });
 
+test('an instant-print frame deepens only its foot', () => {
+	const base = { imgW: 1200, imgH: 900, accentHex: '#FCC000', margin: 50 };
+	const plain = composeGeometry({ ...base, frame: 'white' });
+	const cheki = composeGeometry({ ...base, frame: 'cheki' });
+
+	// The three other sides are untouched, so only the foot is what makes it read
+	// as a print rather than a white border.
+	assert.equal(cheki.pad, plain.pad, 'sides and top must match a plain frame');
+	assert.ok(
+		cheki.padBottom > cheki.pad * 2,
+		'the foot must be markedly deeper than the sides'
+	);
+	assert.equal(cheki.outW, plain.outW, 'width must not change');
+	assert.equal(cheki.outH, plain.outH + cheki.padBottom - cheki.pad);
+	// The preview scales these fractions against different axes, so a foot measured
+	// against the width would land in the wrong place on screen.
+	assert.ok(Math.abs(cheki.padFrac - cheki.pad / cheki.outW) < 1e-12);
+	assert.ok(Math.abs(cheki.padBottomFrac - cheki.padBottom / cheki.outH) < 1e-12);
+});
+
+test('the overlay block sits inside the instant-print foot', () => {
+	// The band the block is fitted to has to be the deepest one. Fitting to the
+	// sides would shrink the code to fit a band it is not drawn in.
+	const geo = composeGeometry({
+		imgW: 1200,
+		imgH: 900,
+		frame: 'cheki',
+		accentHex: '#FCC000',
+		margin: 50,
+		showSwatch: true,
+		showCode: true
+	});
+	const calls: Array<{ x: number; y: number }> = [];
+	const ctx = {
+		fillStyle: '',
+		strokeStyle: '',
+		globalAlpha: 1,
+		lineWidth: 1,
+		textBaseline: '',
+		textAlign: '',
+		font: '',
+		beginPath: () => {},
+		arc: () => {},
+		fill: () => {},
+		stroke: () => {},
+		fillRect: () => {},
+		createLinearGradient: () => ({ addColorStop: () => {} }),
+		fillText: (_t: string, x: number, y: number) => calls.push({ x, y })
+	};
+	drawOverlayBlock(ctx as unknown as CanvasRenderingContext2D, {
+		innerW: geo.innerW,
+		innerH: geo.innerH,
+		pad: geo.pad,
+		padBottom: geo.padBottom,
+		width: geo.outW,
+		height: geo.outH,
+		hasFrame: true,
+		hex: '#FCC000',
+		ink: '#000000',
+		align: 'left',
+		showSwatch: true,
+		showCode: true,
+		showMix: false
+	});
+
+	assert.equal(calls.length, 1, 'the code is drawn once');
+	// The foot runs from the photo's bottom edge to the canvas bottom; the code
+	// must be inside it, and clear of the photo above.
+	const footTop = geo.innerH + geo.pad;
+	assert.ok(calls[0].y > footTop, 'code must sit below the photo');
+	assert.ok(calls[0].y < geo.outH, 'code must sit inside the canvas');
+});
+
 test('preview and export agree on the composition geometry', () => {
 	// The stage preview and the export both call composeGeometry, so this guards
 	// the thing that actually matters: that neither re-derives the frame band by

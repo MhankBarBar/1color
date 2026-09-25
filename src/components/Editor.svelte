@@ -99,7 +99,9 @@
 	let quality = $state<QualityId>('std');
 	let align = $state<Align>('left');
 	let showSwatch = $state(false);
-	let showCode = $state(true);
+	// Off by default. It used to start on, which meant every export carried a hex
+	// string nobody asked for — an overlay is a choice, not a default.
+	let showCode = $state(false);
 	let showMix = $state(false);
 
 	let recent = $state<Rgb[]>([]);
@@ -286,7 +288,7 @@
 		quality = 'std';
 		align = 'left';
 		showSwatch = false;
-		showCode = true;
+		showCode = false;
 		showMix = false;
 		chooseShape('circle');
 		if (sampler) target = sampler.suggestedAccent();
@@ -445,20 +447,14 @@
 				class:is-on={mode === m.id}
 				aria-expanded={mode === m.id ? panelOpen : undefined}
 				onclick={(e) => {
-					// Tapping the active mode folds the panel away; tapping another
-					// switches to it and brings the panel back. The mode row already
-					// names the active mode, so the panel needs no title bar of its
-					// own — that bar repeated the word the row was showing.
+					// One job: switch mode, and make sure the controls are showing.
+					// Folding is the grip's job below, so this control cannot be the
+					// only way back — which is exactly what it was, and closing the
+					// panel then left no visible affordance to reopen it.
 					const row = e.currentTarget.parentElement;
 					const before = row ? row.getBoundingClientRect().top : 0;
-					panelOpen = mode === m.id ? !panelOpen : true;
 					mode = m.id;
-					// Folding the panel removes roughly 300px, which yanks the mode row
-					// upward. The row is the control the reader is aiming at, so it has
-					// to stay put: without this, the tap lands and the button has already
-					// moved out from under the finger, which reads as a dead control —
-					// exactly the "cannot expand it again" report. Clicking through
-					// script never sees this, because it ignores the pointer.
+					panelOpen = true;
 					if (row) {
 						void tick().then(() => {
 							const after = row.getBoundingClientRect().top;
@@ -473,18 +469,29 @@
 		{/each}
 	</div>
 
-{#if panelOpen}
-		<div class="panel">
-			<!-- A grab handle, not a title bar. The mode row above already names the
-			     active mode, so repeating it here said "Color" twice in one card.
-			     What the panel did need was a visible way to fold away, which the
-			     old header carried and the mode row cannot show on its own. -->
-			<button class="panel__grip" onclick={() => (panelOpen = false)} aria-expanded="true">
-				<span class="sr">{t('panel.hide')}</span>
-				<span class="panel__grip-bar" aria-hidden="true"></span>
-				<span class="panel__grip-chevron" aria-hidden="true">{@html icon('chevronDown')}</span>
-			</button>
+	<!--
+		The fold handle, and the panel's only visible affordance.
 
+		It deliberately sits outside the panel's `{#if}`. Inside it, closing the
+		panel removed the very control that reopens it, so the only way back was to
+		guess that the mode row doubles as a toggle — which nobody guesses.
+
+		A grab bar rather than a title bar: the mode row directly above already
+		names the active mode, so a header here said "Color" twice in one card.
+	-->
+	<button
+		class="panel__grip"
+		class:is-open={panelOpen}
+		onclick={() => (panelOpen = !panelOpen)}
+		aria-expanded={panelOpen}
+		aria-controls="editor-panel"
+	>
+		<span class="panel__grip-chevron" aria-hidden="true">{@html icon('chevronDown')}</span>
+		<span class="panel__grip-label">{panelOpen ? t('panel.hide') : t('panel.show')}</span>
+	</button>
+
+	{#if panelOpen}
+		<div class="panel" id="editor-panel">
 			<div class="panel__body">
 				{#if mode === 'accent'}
 					{#if recent.length}

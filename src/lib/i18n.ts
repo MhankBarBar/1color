@@ -38,6 +38,7 @@ export const dict: Record<LocaleId, Dict> = {
 		'accent.palette': 'Colors in this photo',
 		'accent.recent': 'Recent',
 		'panel.hide': 'Hide controls',
+		'panel.show': 'Show controls',
 
 		'range.all': 'Whole photo',
 		'range.part': 'Part',
@@ -141,6 +142,7 @@ export const dict: Record<LocaleId, Dict> = {
 		'accent.palette': 'この写真の色',
 		'accent.recent': '最近使った色',
 		'panel.hide': '操作パネルを閉じる',
+		'panel.show': '操作パネルを開く',
 
 		'range.all': '写真全体',
 		'range.part': '一部分',
