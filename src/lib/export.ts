@@ -64,7 +64,6 @@ export function outputSize(
 	const ratio = RATIOS.find((r) => r.id === ratioId);
 	const ar = ratio && ratio.w && ratio.h ? ratio.w / ratio.h : imgW / imgH;
 
-	// Fit the largest rect of aspect `ar` inside the source, then scale to quality.
 	let w = imgW;
 	let h = Math.round(imgW / ar);
 	if (h > imgH) {
@@ -145,7 +144,6 @@ export function cropRect(imgW: number, imgH: number, ratioId: string): CropRect 
 /** Where the overlay block sits across the band. */
 export const ALIGNMENTS: Record<Align, number> = { left: 0, center: 0.5, right: 1 };
 
-/** Input to `composeWithinCeiling`. */
 export interface CeilingInput {
 	wanted: Size;
 	frame: FrameId;
@@ -389,7 +387,6 @@ export function composeGeometry({
 	};
 }
 
-/** Input to `exportComposite`. */
 export interface ExportInput extends OverlaySpec {
 	source: PixelSource & Size;
 	/** Partial by design: the renderer merges these over its defaults, and the
@@ -509,7 +506,6 @@ export async function exportComposite({
 	return { blob, width: geo.outW, height: geo.outH };
 }
 
-/** Input to `drawOverlayBlock`. */
 export interface OverlayBlockInput extends OverlaySpec {
 	innerW: number;
 	innerH: number;
@@ -646,7 +642,6 @@ function photoInset(height: number, blockH: number, unit: number): number {
 	return height - Math.round(unit * 0.035) - unit * 0.02 - blockH;
 }
 
-/** Input to `drawMix`. */
 interface MixInput {
 	x: number;
 	y: number;
@@ -700,7 +695,8 @@ export async function shareBlob(
 			return 'shared';
 		} catch (err) {
 			if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
-			// fall through to download
+			// Any other failure (a share target that refuses the file, a permission
+			// error) falls back to a plain download rather than losing the export.
 		}
 	}
 	downloadBlob(blob, filename);

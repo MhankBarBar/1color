@@ -21,7 +21,8 @@ export async function bitmapFromBlob(blob: Blob): Promise<PixelSource> {
 			try {
 				return await createImageBitmap(blob);
 			} catch {
-				// fall through to the element path
+				// Options unsupported or the decode failed; the element path below
+				// is the fallback that keeps WebKit working.
 			}
 		}
 	}

@@ -89,6 +89,7 @@ export const dict: Record<LocaleId, Dict> = {
 
 		'accents.title': 'One photo, four colors.',
 		'accents.original': 'Original',
+		'accents.pick': 'Choose a color',
 		'accents.petals': 'Petals',
 		'accents.leaves': 'Leaves',
 		'accents.sky': 'Sky',
@@ -108,7 +109,8 @@ export const dict: Record<LocaleId, Dict> = {
 		'footer.disclaimer':
 			'1color is an independent project, not affiliated with or endorsed by the Accent iOS app by AKIRA SANO.',
 		'footer.photos': 'Photos: Wikimedia Commons',
-		'footer.iosapp': 'The iOS app it was inspired by'
+		'footer.iosapp': 'The iOS app it was inspired by',
+		'footer.source': 'Source on GitHub'
 	},
 
 	ja: {
@@ -193,6 +195,7 @@ export const dict: Record<LocaleId, Dict> = {
 
 		'accents.title': '同じ一枚を、四つの色で。',
 		'accents.original': '元の写真',
+		'accents.pick': '色を選ぶ',
 		'accents.petals': '花びら',
 		'accents.leaves': '葉',
 		'accents.sky': '空',
@@ -212,7 +215,8 @@ export const dict: Record<LocaleId, Dict> = {
 		'footer.disclaimer':
 			'「1color」は独立したプロジェクトです。AKIRA SANO 氏のiOSアプリ「Accent - Selective Color」とは関係ありません。',
 		'footer.photos': '写真: Wikimedia Commons',
-		'footer.iosapp': '参考にしたiOSアプリ'
+		'footer.iosapp': '参考にしたiOSアプリ',
+		'footer.source': 'GitHubでソースを見る'
 	}
 };
 

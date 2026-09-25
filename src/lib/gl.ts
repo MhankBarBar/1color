@@ -199,7 +199,14 @@ export class Renderer {
 		this.render();
 	}
 
-	/** Uploads the mask layer only when it changed. */
+	/**
+	 * Uploads the mask texture, unconditionally.
+	 *
+	 * The deduplication lives at the call site, not here: `Stage` only calls this
+	 * when the mask will actually be read. An unconditional upload moves roughly
+	 * 6 MB per pointer event, which is why the caller checks first — a doc here
+	 * claiming this method skips unchanged uploads is wrong and will mislead.
+	 */
 	setMask(source: TextureSource): void {
 		const gl = this.gl;
 		gl.activeTexture(gl.TEXTURE1);

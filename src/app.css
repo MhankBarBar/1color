@@ -1264,6 +1264,123 @@ svg {
 	align-items: start;
 }
 
+/* The showcase: one large frame, the palette as the control.
+   The frame leads on wide screens and the picks sit beside it; on a phone the
+   frame leads and the picks follow, because the photo is the argument and the
+   controls are how you test it. */
+.showcase {
+	display: grid;
+	grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+	gap: clamp(20px, 3vw, 44px);
+	align-items: center;
+}
+
+.showcase__frame {
+	border-radius: var(--radius-panel);
+	overflow: hidden;
+	background: var(--ink-100);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+}
+
+.showcase__side {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	min-width: 0;
+}
+
+.showcase__caption {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: clamp(1.2rem, 2vw, 1.6rem);
+	letter-spacing: -0.02em;
+}
+
+.showcase__code {
+	margin-left: auto;
+	font-size: var(--t-sm);
+	font-weight: 400;
+	color: var(--text-faint);
+}
+
+.showcase__picks {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.showcase__pick {
+	display: flex;
+	align-items: center;
+	gap: 11px;
+	padding: 11px 13px;
+	border-radius: var(--radius-ctl);
+	color: var(--text-dim);
+	font-size: var(--t-base);
+	text-align: left;
+	transition: background 0.2s, color 0.2s;
+}
+
+.showcase__pick:hover {
+	color: var(--text);
+	background: rgb(255 255 255 / 0.05);
+}
+
+.showcase__pick.is-on {
+	color: var(--text);
+	background: var(--ink-200);
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+.showcase__dot {
+	width: 15px;
+	height: 15px;
+	border-radius: 50%;
+	flex: none;
+	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
+}
+
+/* The untouched photo is every color, so its mark is the whole wheel rather than
+   one swatch. */
+.showcase__dot--plain {
+	background: conic-gradient(#ff4d4d, #ffd84d, #6ee06e, #4dd8ff, #5b6bff, #d94dff, #ff4d4d);
+}
+
+.showcase__pick-hex {
+	margin-left: auto;
+	font-size: var(--t-xs);
+	color: var(--text-faint);
+}
+
+@media (max-width: 860px) {
+	.showcase {
+		grid-template-columns: 1fr;
+		gap: 18px;
+	}
+
+	/* On a phone the picks become a wrapping row of chips under the photo, so the
+	   photo keeps the full width instead of being squeezed beside a list. */
+	.showcase__picks {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.showcase__pick {
+		padding: 8px 12px;
+		border-radius: var(--radius-pill);
+		background: var(--ink-200);
+		font-size: var(--t-sm);
+	}
+
+	.showcase__pick-hex {
+		display: none;
+	}
+}
+
 .compare__item {
 	display: flex;
 	flex-direction: column;
@@ -1321,12 +1438,26 @@ svg {
 	color: var(--text-faint);
 }
 
-/* Live camera */
+/* Live camera.
+   Single column by default: the viewfinder takes the full width and the copy
+   follows it. This section exists for phones, and the earlier two-column layout
+   put the heading first and the camera second, which pushed the preview below the
+   fold on the device it is for. Desktop opts into two columns below. */
 .live {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-	gap: clamp(28px, 4vw, 56px);
-	align-items: center;
+	grid-template-columns: 1fr;
+	gap: 22px;
+}
+
+.live__camera {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	min-width: 0;
+}
+
+.live__copy {
+	min-width: 0;
 }
 
 .live__frame {
@@ -1334,6 +1465,8 @@ svg {
 	border-radius: var(--radius-card);
 	overflow: hidden;
 	background: #000;
+	/* 3:4 is the phone camera's own shape, so the preview matches what the
+	   captured frame will be. Idle it is shorter — see the phone breakpoint. */
 	aspect-ratio: 3 / 4;
 	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), var(--shadow-lift);
 	display: grid;
@@ -1353,38 +1486,51 @@ svg {
 	pointer-events: none;
 }
 
-/* The idle camera mark. Its span is already fixed at 34px in the markup, so the
-   icon fills that rather than keeping its own intrinsic size. */
-.live__idle > span svg {
-	width: 100%;
-	height: 100%;
-}
-
 .live__idle {
 	grid-area: 1 / 1;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 12px;
-	padding: 32px;
+	justify-content: center;
+	gap: 14px;
+	padding: 28px;
 	text-align: center;
-	color: var(--text-faint);
+	color: var(--text-dim);
 	font-size: var(--t-base);
-	max-width: 30ch;
+	max-width: 32ch;
 }
 
+.live__idle-mark {
+	width: 40px;
+	height: 40px;
+	color: var(--accent);
+}
+
+/* The idle mark's span carries the size; the injected SVG follows it. */
+.live__idle-mark svg {
+	width: 100%;
+	height: 100%;
+}
+
+.live__idle-note {
+	color: var(--text-faint);
+	font-size: var(--t-sm);
+	max-width: 28ch;
+}
+
+/* The shutter bar, directly under the viewfinder. */
 .live__controls {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 14px;
 	flex-wrap: wrap;
-	margin-top: 22px;
 }
 
 .live__shutter {
-	width: 54px;
-	height: 54px;
+	width: 62px;
+	height: 62px;
 	border-radius: 50%;
+	flex: none;
 	background: var(--ink-200);
 	box-shadow: inset 0 0 0 3px var(--text);
 	transition: transform 0.16s var(--ease), background 0.2s;
@@ -1396,6 +1542,26 @@ svg {
 
 .live__shutter:active {
 	transform: scale(0.94);
+}
+
+/* From a tablet up there is room to sit the copy beside the camera. */
+@media (min-width: 860px) {
+	.live {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+		gap: clamp(28px, 4vw, 56px);
+		align-items: center;
+	}
+
+	/* Copy first on desktop, matching the rest of the page's reading order. */
+	.live__copy {
+		order: -1;
+	}
+
+	.live__frame {
+		max-width: 440px;
+		margin-inline: auto;
+		width: 100%;
+	}
 }
 
 /* --- footer -------------------------------------------------------------- */
@@ -1471,23 +1637,10 @@ svg {
 	}
 }
 
-/* Compare strip: `auto-fit` above already handles the column count at every
-   width, so the old fixed 2/1-column overrides are gone. */
-@media (max-width: 1000px) {
-	.live {
-		grid-template-columns: 1fr;
-		gap: 32px;
-	}
-
-	.live__frame {
-		max-width: 460px;
-		margin-inline: auto;
-	}
-
-	/* A 3:4 preview box is right once a feed is streaming, but before the camera
-	   is on it is a large empty rectangle. On a phone that was over half the
-	   viewport showing an icon and a sentence, so the idle box is shorter and only
-	   the live one takes the full preview height. */
+/* The idle viewfinder is shorter than the live one: a 3:4 box is right once a
+   feed is streaming, but before the camera is on it is a large empty rectangle.
+   Scoped to phones — the two-column desktop layout gives it its own height. */
+@media (max-width: 859px) {
 	.live__frame:not(.is-live) {
 		aspect-ratio: 4 / 3;
 	}

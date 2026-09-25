@@ -10,7 +10,7 @@
 	import AccentTile from './components/AccentTile.svelte';
 	import { dict, locales } from './lib/i18n.js';
 	import { icon } from './lib/icons.js';
-	import { hexToRgb, inkOn } from './lib/color.js';
+	import { hexToRgb, inkOn, rgbToHex } from './lib/color.js';
 	import { loadPhoto, isAccepted } from './lib/image.js';
 	import { Sampler, showcaseAccents } from './lib/analysis.js';
 	import { createLoadGate } from './lib/loadGate.js';
@@ -88,13 +88,6 @@
 	let sampler = $state<Sampler | null>(null);
 	let fileInput = $state<HTMLInputElement | null>(null);
 
-	/**
-	 * Load lifecycle: 'idle' | 'loading' | 'ready' | 'error'.
-	 *
-	 * The stage only offers its drop target once loading has settled, so the
-	 * first paint does not flash a drag-and-drop prompt that the auto-loaded
-	 * sample immediately replaces.
-	 */
 	// Starts as 'loading' rather than 'idle': the boot sample always loads on
 	// mount, so declaring that up front means the very first paint shows the
 	// placeholder instead of flashing a drop target for one frame.
@@ -208,6 +201,32 @@
 	});
 
 	const samples = $derived(SAMPLES.map((s) => ({ src: s.src, label: s.label[locale] })));
+
+	/**
+	 * Which accent the showcase is showing.
+	 *
+	 * A single large photo that swaps its kept color, rather than a row of static
+	 * tiles. The tiles were a grid of near-identical thumbnails — they read as a
+	 * filter picker and buried the one thing the section has to demonstrate, which
+	 * is the transition from color to monochrome on the same frame.
+	 *
+	 * `null` means the untouched photo, which is the reference the other four are
+	 * judged against.
+	 */
+	let showcasePick = $state<number | null>(0);
+
+	// Reset when a new photo arrives, so the picker cannot point past the end of a
+	// shorter palette.
+	$effect(() => {
+		void source;
+		showcasePick = 0;
+	});
+
+	const showcaseHex = $derived(
+		showcasePick === null || !showcase[showcasePick]
+			? null
+			: rgbToHex(showcase[showcasePick].rgb)
+	);
 
 	function scrollTo(id: string): void {
 		document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -361,18 +380,57 @@
 			</div>
 
 			{#if source && showcase.length}
-				<div class="compare">
-					<!-- The untouched photo first. Without it the heading's claim —
-					     "one photo, four colors" — is unverifiable: four edited tiles
-					     give the reader nothing to compare against. -->
-					<div class="compare__item">
-						<AccentTile {source} target={showcase[0].rgb} plain label={t('accents.original')} />
+				<!-- One large frame that swaps its kept color, with the palette as the
+				     control. The previous five-tile grid showed every result at once but
+				     nothing of the transition, and at thumbnail size the four edits
+				     looked nearly identical. Here the photo is big enough to see what
+				     "one color" actually means, and tapping a swatch repaints it. -->
+				<div class="showcase">
+					<div class="showcase__frame">
+						<AccentTile
+							{source}
+							target={showcasePick === null ? showcase[0].rgb : showcase[showcasePick].rgb}
+							plain={showcasePick === null}
+							bare
+						/>
 					</div>
-					{#each showcase as a (a.key)}
-						<div class="compare__item">
-							<AccentTile {source} target={a.rgb} label={a.label} />
+
+					<div class="showcase__side">
+						<p class="showcase__caption">
+							{showcasePick === null ? t('accents.original') : showcase[showcasePick].label}
+							{#if showcaseHex}
+								<span class="showcase__code mono">{showcaseHex}</span>
+							{/if}
+						</p>
+
+						<div class="showcase__picks" role="group" aria-label={t('accents.pick')}>
+							<button
+								class="showcase__pick"
+								class:is-on={showcasePick === null}
+								onclick={() => (showcasePick = null)}
+								aria-pressed={showcasePick === null}
+							>
+								<span class="showcase__dot showcase__dot--plain" aria-hidden="true"></span>
+								{t('accents.original')}
+							</button>
+							{#each showcase as a, i (a.key)}
+								<button
+									class="showcase__pick"
+									class:is-on={showcasePick === i}
+									onclick={() => (showcasePick = i)}
+									aria-pressed={showcasePick === i}
+								>
+									<span
+										class="showcase__dot"
+										style:background={rgbToHex(a.rgb)}
+										aria-hidden="true"
+									></span>
+									{a.label}
+									<span class="showcase__pick-hex mono">{rgbToHex(a.rgb)}</span>
+								</button>
+							{/each}
 						</div>
-					{/each}
+					</div>
 				</div>
 			{:else}
 				<div class="compare">
@@ -408,6 +466,9 @@
 				rel="noreferrer noopener"
 			>
 				{t('footer.iosapp')}
+			</a>
+			<a href="https://github.com/MhankBarBar/1color" target="_blank" rel="noreferrer noopener">
+				{t('footer.source')}
 			</a>
 		</div>
 		<p class="footer__note">{t('footer.disclaimer')}</p>

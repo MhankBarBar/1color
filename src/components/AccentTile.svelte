@@ -20,7 +20,8 @@
 		label = '',
 		width = 34,
 		feather = 35,
-		plain = false
+		plain = false,
+		bare = false
 	}: {
 		source: TextureSource;
 		target: Rgb;
@@ -30,6 +31,10 @@
 		/** Draw the photo untouched. Used for the "original" tile, which is what
 		 *  makes the "one photo" claim in the heading checkable. */
 		plain?: boolean;
+		/** Photo only, no caption row. The showcase draws its own caption, and two
+		 *  of them put a chip and a hex code inside the frame's rounded corners,
+		 *  where they were clipped. */
+		bare?: boolean;
 	} = $props();
 
 	let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -86,16 +91,18 @@
 <figure class="compare__figure" style:aspect-ratio={aspect}>
 	<canvas bind:this={canvasEl}></canvas>
 </figure>
-{#if plain}
-	<!-- The original is labelled but carries no chip or code: it has no accent to
-	     report, and the label is exactly what makes the comparison readable. -->
-	<div class="compare__meta">
-		<span class="compare__label">{label}</span>
-	</div>
-{:else}
-	<div class="compare__meta">
-		<span class="compare__chip" style:background={hex} aria-hidden="true"></span>
-		<span class="compare__label">{label}</span>
-		<span class="compare__hex">{hex}</span>
-	</div>
+{#if !bare}
+	{#if plain}
+		<!-- The original is labelled but carries no chip or code: it has no accent to
+		     report, and the label is exactly what makes the comparison readable. -->
+		<div class="compare__meta">
+			<span class="compare__label">{label}</span>
+		</div>
+	{:else}
+		<div class="compare__meta">
+			<span class="compare__chip" style:background={hex} aria-hidden="true"></span>
+			<span class="compare__label">{label}</span>
+			<span class="compare__hex">{hex}</span>
+		</div>
+	{/if}
 {/if}

@@ -161,7 +161,6 @@
 		['right', 'out.align.right']
 	];
 
-	// Four modes, mirroring the app's mode row plus its output screen.
 	const MODES: Array<{ id: Mode; key: string; icon: 'accent' | 'range' | 'mono' | 'output' }> = [
 		{ id: 'accent', key: 'panel.accent', icon: 'accent' },
 		{ id: 'range', key: 'panel.range', icon: 'range' },
@@ -439,7 +438,6 @@
 		<p class="toast" role="status">{toast}</p>
 	{/if}
 
-	<!-- Mode switcher, as circular buttons — the app's own navigation. -->
 	<div class="modes">
 		{#each MODES as m (m.id)}
 			<button

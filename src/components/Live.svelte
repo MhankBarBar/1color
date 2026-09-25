@@ -215,12 +215,39 @@
 </script>
 
 <div class="live">
-	<div>
-		<h2 class="section-title">{t('live.title')}</h2>
-		<p class="lede" style="margin-top: 14px">{t('live.sub')}</p>
+	<!-- The camera leads in the DOM because on a phone it is the point of the
+	     section: the heading and its paragraph used to come first, which pushed the
+	     viewfinder below the fold on the one device this feature is for. Desktop
+	     puts the copy back on the left with `order`. -->
+	<div class="live__camera">
+		<div class="live__frame" class:is-live={status === 'live'} bind:this={wrapEl}>
+			<!-- svelte-ignore a11y_media_has_caption -->
+			<video class="live__video" bind:this={videoEl} playsinline muted></video>
+			<canvas
+				class="live__canvas"
+				bind:this={canvasEl}
+				onclick={pickColor}
+				aria-label={t('live.title')}
+			></canvas>
 
-		<div class="live__controls">
-			{#if status === 'live'}
+			{#if status !== 'live'}
+				<div class="live__idle">
+					<span class="live__idle-mark" aria-hidden="true">{@html icon('camera')}</span>
+					{#if status === 'starting'}
+						<p>{t('live.waiting')}</p>
+					{:else}
+						<button class="btn btn--primary" onclick={startCamera}>{t('live.start')}</button>
+						<p class="live__idle-note">{t('live.privacy')}</p>
+					{/if}
+				</div>
+			{/if}
+		</div>
+
+		<!-- The camera's own control bar, under the viewfinder where a shutter
+		     belongs. It was in the text column, so on a phone the shutter sat above
+		     the preview it fires. -->
+		{#if status === 'live'}
+			<div class="live__controls">
 				<button class="btn btn--ghost" onclick={stopCamera}>{t('live.stop')}</button>
 				<button
 					class="live__shutter tip"
@@ -228,19 +255,7 @@
 					onclick={capture}
 					aria-label={t('live.capture')}
 				></button>
-			{/if}
-		</div>
-
-		{#if errorKind === 'denied'}
-			<p class="notice" style="margin-top: 16px">
-				<span aria-hidden="true">{@html icon('info')}</span>
-				{t('live.denied')}
-			</p>
-		{:else if errorKind === 'unsupported'}
-			<p class="notice" style="margin-top: 16px">
-				<span aria-hidden="true">{@html icon('info')}</span>
-				{t('live.unsupported')}
-			</p>
+			</div>
 		{/if}
 
 		{#if status === 'live'}
@@ -274,32 +289,20 @@
 		{/if}
 	</div>
 
-	<div class="live__frame" class:is-live={status === 'live'} bind:this={wrapEl}>
-		<!-- svelte-ignore a11y_media_has_caption -->
-		<video class="live__video" bind:this={videoEl} playsinline muted></video>
-		<canvas
-			class="live__canvas"
-			bind:this={canvasEl}
-			onclick={pickColor}
-			aria-label={t('live.title')}
-		></canvas>
+	<div class="live__copy">
+		<h2 class="section-title">{t('live.title')}</h2>
+		<p class="lede" style="margin-top: 14px">{t('live.sub')}</p>
 
-		{#if status !== 'live'}
-			<div class="live__idle">
-				<span style="color: var(--accent); width: 34px" aria-hidden="true">
-					{@html icon('camera')}
-				</span>
-				<!-- The idle frame carries the action, not just a caption. The start
-				     button used to sit below the box, out of view, which left a tall
-				     empty rectangle whose only content was a privacy reassurance —
-				     nothing said what to do with it. -->
-				{#if status === 'starting'}
-					<p>{t('live.waiting')}</p>
-				{:else}
-					<button class="btn btn--primary" onclick={startCamera}>{t('live.start')}</button>
-					<p>{t('live.privacy')}</p>
-				{/if}
-			</div>
+		{#if errorKind === 'denied'}
+			<p class="notice" style="margin-top: 16px">
+				<span aria-hidden="true">{@html icon('info')}</span>
+				{t('live.denied')}
+			</p>
+		{:else if errorKind === 'unsupported'}
+			<p class="notice" style="margin-top: 16px">
+				<span aria-hidden="true">{@html icon('info')}</span>
+				{t('live.unsupported')}
+			</p>
 		{/if}
 	</div>
 </div>

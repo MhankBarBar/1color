@@ -39,7 +39,6 @@ function coverGrid(data: Uint8ClampedArray, w: number, h: number, grid: number):
 	const n = grid * grid;
 	const out = new Uint8Array(n * 3);
 	for (let k = 0; k < n; k++) {
-		// frac(k * golden) for x; a plain sweep for y.
 		const fx = (k * GOLDEN) % 1;
 		const fy = (k + 0.5) / n;
 		const sx = Math.min(w - 1, (fx * w) | 0);
@@ -64,7 +63,6 @@ export class Sampler {
 	palette: Rgb[];
 	cover: Uint8Array;
 
-	/** @param {HTMLCanvasElement|ImageBitmap} source */
 	constructor(source: PixelSource) {
 		this.source = source;
 
