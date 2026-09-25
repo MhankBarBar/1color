@@ -9,6 +9,7 @@
 	 * photo, Save) scrolled out of view.
 	 */
 	import Stage from './Stage.svelte';
+	import { tick } from 'svelte';
 	import { icon } from '../lib/icons.js';
 	import { rgbToHex, pushRecent } from '../lib/color.js';
 	import { shapeForTool, SHAPE_TOOLS } from '../lib/mask.js';
@@ -147,7 +148,8 @@
 		['white', 'out.frame.white'],
 		['black', 'out.frame.black'],
 		['accent', 'out.frame.accent'],
-		['custom', 'out.frame.custom']
+		['custom', 'out.frame.custom'],
+		['cheki', 'out.frame.cheki']
 	];
 
 	// Where the swatch / code / mix block sits across the band.
@@ -354,7 +356,14 @@
 	<div class="editor__bar">
 		<span class="editor__swatch" style:background={hex} aria-hidden="true"></span>
 		<span class="editor__hex">{hex}</span>
-		<span class="editor__coverage">{(coverage * 100).toFixed(0)}%</span>
+		<!-- The gesture instruction belongs beside the surface it describes. It sat
+		     in the hero copy, four rows away from the photo, where it was the
+		     faintest text on the page — an instruction for a canvas the reader had
+		     not reached yet. -->
+		<span class="editor__hint">
+			<span class="editor__hint-icon" aria-hidden="true">{@html icon('hand')}</span>
+			{t('stage.hint')}
+		</span>
 
 		<div class="editor__bar-actions">
 			<button
@@ -435,13 +444,27 @@
 				class="mode"
 				class:is-on={mode === m.id}
 				aria-expanded={mode === m.id ? panelOpen : undefined}
-				onclick={() => {
+				onclick={(e) => {
 					// Tapping the active mode folds the panel away; tapping another
 					// switches to it and brings the panel back. The mode row already
 					// names the active mode, so the panel needs no title bar of its
 					// own — that bar repeated the word the row was showing.
+					const row = e.currentTarget.parentElement;
+					const before = row ? row.getBoundingClientRect().top : 0;
 					panelOpen = mode === m.id ? !panelOpen : true;
 					mode = m.id;
+					// Folding the panel removes roughly 300px, which yanks the mode row
+					// upward. The row is the control the reader is aiming at, so it has
+					// to stay put: without this, the tap lands and the button has already
+					// moved out from under the finger, which reads as a dead control —
+					// exactly the "cannot expand it again" report. Clicking through
+					// script never sees this, because it ignores the pointer.
+					if (row) {
+						void tick().then(() => {
+							const after = row.getBoundingClientRect().top;
+							if (after !== before) scrollBy(0, after - before);
+						});
+					}
 				}}
 			>
 				<span class="mode__disc" aria-hidden="true">{@html icon(m.icon)}</span>
@@ -507,6 +530,14 @@
 						</span>
 						<input type="range" min="0" max="100" bind:value={feather} />
 					</label>
+
+					<!-- The share of the photo keeping its color, next to the two
+					     controls that set it. In the top bar it was an unlabelled
+					     number with nothing to explain it. -->
+					<p class="panel__readout">
+						<span>{t('editor.coverage')}</span>
+						<span class="mono">{(coverage * 100).toFixed(0)}%</span>
+					</p>
 				{/if}
 
 				{#if mode === 'range'}

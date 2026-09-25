@@ -305,17 +305,40 @@
 					</div>
 				</div>
 
-				<p class="hero__hint">
-					<span style="width: 15px; display: inline-block" aria-hidden="true">{@html icon('hand')}</span>
-					{t('hero.hint')}
-				</p>
-
 				{#if loadError}
 					<p class="notice" role="alert">
 						<span aria-hidden="true">{@html icon('info')}</span>
 						{loadError}
 					</p>
 				{/if}
+
+			<!--
+				The hero's right-hand field, on screens wide enough to have one.
+
+				A fan of planes in 3D: the nearest carries the live accent, the ones
+				behind step down a neutral ramp. The product's own idea — one color
+				survives, the rest go grey — as an object rather than a sentence. It
+				re-tints for free, because --accent is a variable on :root.
+
+				It hangs off the copy block rather than the grid. Anchored to the grid
+				it centred on the copy *and* the editor card together, which put it
+				behind the card — the card is opaque and paints later, so the fan was
+				in the DOM and invisible. It also emerges from behind the card's top
+				edge, which is the effect worth having.
+
+				CSS 3D rather than WebGL on purpose. The app keeps one live GL context
+				for its thumbnails and browsers cap how many a page may hold, so
+				ornament must not spend a second one.
+
+				Decorative, so it is hidden from assistive tech and never carries text.
+			-->
+			<div class="hero__art" aria-hidden="true">
+				<div class="hero__fan">
+					{#each [0, 1, 2, 3, 4] as i (i)}
+						<span class="hero__plane" style="--i:{i}"></span>
+					{/each}
+				</div>
+			</div>
 			</div>
 
 			<div id="editor">
@@ -339,6 +362,12 @@
 
 			{#if source && showcase.length}
 				<div class="compare">
+					<!-- The untouched photo first. Without it the heading's claim —
+					     "one photo, four colors" — is unverifiable: four edited tiles
+					     give the reader nothing to compare against. -->
+					<div class="compare__item">
+						<AccentTile {source} target={showcase[0].rgb} plain label={t('accents.original')} />
+					</div>
 					{#each showcase as a (a.key)}
 						<div class="compare__item">
 							<AccentTile {source} target={a.rgb} label={a.label} />

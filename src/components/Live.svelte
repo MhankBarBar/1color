@@ -228,10 +228,6 @@
 					onclick={capture}
 					aria-label={t('live.capture')}
 				></button>
-			{:else}
-				<button class="btn btn--primary" onclick={startCamera} disabled={status === 'starting'}>
-					{status === 'starting' ? t('live.waiting') : t('live.start')}
-				</button>
 			{/if}
 		</div>
 
@@ -244,11 +240,6 @@
 			<p class="notice" style="margin-top: 16px">
 				<span aria-hidden="true">{@html icon('info')}</span>
 				{t('live.unsupported')}
-			</p>
-		{:else}
-			<p class="notice" style="margin-top: 16px">
-				<span aria-hidden="true">{@html icon('info')}</span>
-				{t('live.privacy')}
 			</p>
 		{/if}
 
@@ -283,7 +274,7 @@
 		{/if}
 	</div>
 
-	<div class="live__frame" bind:this={wrapEl}>
+	<div class="live__frame" class:is-live={status === 'live'} bind:this={wrapEl}>
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video class="live__video" bind:this={videoEl} playsinline muted></video>
 		<canvas
@@ -298,12 +289,15 @@
 				<span style="color: var(--accent); width: 34px" aria-hidden="true">
 					{@html icon('camera')}
 				</span>
-				<!-- Only the transient state gets words here. The privacy line used to
-				     render in this overlay *and* in the notice under the button, so
-				     the same sentence appeared twice on the page. It belongs with the
-				     button, where it answers "what happens if I press this". -->
+				<!-- The idle frame carries the action, not just a caption. The start
+				     button used to sit below the box, out of view, which left a tall
+				     empty rectangle whose only content was a privacy reassurance —
+				     nothing said what to do with it. -->
 				{#if status === 'starting'}
 					<p>{t('live.waiting')}</p>
+				{:else}
+					<button class="btn btn--primary" onclick={startCamera}>{t('live.start')}</button>
+					<p>{t('live.privacy')}</p>
 				{/if}
 			</div>
 		{/if}

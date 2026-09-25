@@ -722,6 +722,7 @@
 			innerW: framed.innerW,
 			innerH: framed.innerH,
 			pad: framed.pad,
+			padBottom: framed.padBottom,
 			width: framed.outW,
 			height: framed.outH,
 			hasFrame: !!framed.hex,
@@ -747,7 +748,9 @@
 			style:width={`${fit.w}px`}
 			style:height={`${fit.h}px`}
 			style:background={framed.hex || 'transparent'}
-			style:padding={framed.hex ? `${Math.round(fit.w * framed.padFrac)}px` : '0'}
+			style:padding={framed.hex
+				? `${Math.round(fit.w * framed.padFrac)}px ${Math.round(fit.w * framed.padFrac)}px ${Math.round(fit.h * framed.padBottomFrac)}px`
+				: '0'}
 		>
 			<div
 				class="stage__inner"
@@ -843,7 +846,7 @@
 					<canvas
 						class="stage__compose"
 						bind:this={composeEl}
-						style:inset={`-${Math.round(fit.w * framed.padFrac)}px`}
+						style:inset={`-${Math.round(fit.w * framed.padFrac)}px -${Math.round(fit.w * framed.padFrac)}px -${Math.round(fit.h * framed.padBottomFrac)}px`}
 						style:width={`${fit.w}px`}
 						style:height={`${fit.h}px`}
 						aria-hidden="true"

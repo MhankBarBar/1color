@@ -35,7 +35,7 @@ export interface CropRect {
 export type Align = 'left' | 'center' | 'right';
 
 /** The frame fill selector. */
-export type FrameId = 'none' | 'white' | 'black' | 'accent' | 'custom';
+export type FrameId = 'none' | 'white' | 'black' | 'accent' | 'custom' | 'cheki';
 
 /** The region tool. `circle` and `rect` are parametric; `lasso` and `brush` are
  *  raster masks built from points. */
@@ -131,7 +131,11 @@ export interface Geometry {
 	hex: string | null;
 	innerW: number;
 	innerH: number;
+	/** Side and top band. */
 	pad: number;
+	/** Bottom band. Equal to `pad` except for an instant-print frame, which has a
+	 *  deliberately deeper foot. */
+	padBottom: number;
 	outW: number;
 	outH: number;
 	aspect: number;
@@ -140,6 +144,7 @@ export interface Geometry {
 	showCode: boolean;
 	showMix: boolean;
 	padFrac: number;
+	padBottomFrac: number;
 }
 
 /** A locale's string table. Keys are dotted paths (`out.frame.white`). */

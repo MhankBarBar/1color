@@ -95,11 +95,22 @@ export function frameHexFor(
 	if (frame === 'black') return '#08080A';
 	if (frame === 'accent') return accentHex;
 	if (frame === 'custom') return customHex || accentHex;
+	// An instant print is white regardless of the accent: the paper is the point.
+	if (frame === 'cheki') return '#F6F6F8';
 	return null;
 }
 
 /** Fraction of the short edge used as frame padding. */
 export const framePad = (margin: number): number => (margin / 100) * 0.18;
+
+/**
+ * How much deeper an instant print's foot is than its other three sides.
+ *
+ * A cheki's whole character is the wide band under the photo, which is where the
+ * color code is written. Uniform padding with a caption underneath is just a
+ * white border.
+ */
+export const CHEKI_FOOT = 3.2;
 
 /**
  * The part of the photo a ratio keeps, in normalised photo units.
@@ -261,6 +272,7 @@ type MetricsInput = OverlaySpec & {
 	innerW: number;
 	innerH: number;
 	pad: number;
+	padBottom: number;
 	hasFrame: boolean;
 };
 
@@ -278,6 +290,7 @@ function overlayMetrics({
 	innerW,
 	innerH,
 	pad,
+	padBottom,
 	hasFrame,
 	showSwatch,
 	showCode,
@@ -293,8 +306,11 @@ function overlayMetrics({
 	const rowCount = overlayRowCount({ showSwatch, showCode, showMix });
 	const natural = unit * 0.075;
 	// 1.35 leaves the band visibly framing the block rather than letting it fill
-	// the space edge to edge.
-	const fitted = hasFrame && rowCount ? pad / 1.35 / rowCount : natural;
+	// the space edge to edge. The deepest band governs: an instant print's foot is
+	// where the block goes, so fitting to the shallower sides would shrink it for
+	// no reason.
+	const band = Math.max(pad, padBottom);
+	const fitted = hasFrame && rowCount ? band / 1.35 / rowCount : natural;
 	const rowH = hasFrame && rowCount ? Math.min(natural, fitted) : natural;
 	return {
 		unit,
@@ -344,14 +360,18 @@ export function composeGeometry({
 	// block's height: doing that made the margin slider inert for its whole
 	// travel, because the floor exceeded anything the slider could request.
 	const pad = hex ? Math.round(framePad(margin) * Math.min(imgW, imgH)) : 0;
+	// One side may differ: an instant print's foot carries the color code, so it
+	// is deliberately deeper than the top and sides.
+	const padBottom = hex && frame === 'cheki' ? Math.round(pad * CHEKI_FOOT) : pad;
 
 	const outW = imgW + pad * 2;
-	const outH = imgH + pad * 2;
+	const outH = imgH + pad + padBottom;
 	return {
 		hex,
 		innerW: imgW,
 		innerH: imgH,
 		pad,
+		padBottom,
 		outW,
 		outH,
 		aspect: outW / outH,
@@ -362,7 +382,10 @@ export function composeGeometry({
 		// Padding as a fraction of the framed width. The preview needs it because
 		// CSS percentage padding resolves against the containing block's width and
 		// would not match this box, so it scales the value to pixels itself.
-		padFrac: pad / outW
+		padFrac: pad / outW,
+		// Against the height, not the width: the preview scales this one by the
+		// composition's height to get the foot in pixels.
+		padBottomFrac: padBottom / outH
 	};
 }
 
@@ -468,6 +491,7 @@ export async function exportComposite({
 		innerW,
 		innerH,
 		pad: geo.pad,
+		padBottom: geo.padBottom,
 		width: geo.outW,
 		height: geo.outH,
 		hasFrame: !!frameHex,
@@ -490,6 +514,8 @@ export interface OverlayBlockInput extends OverlaySpec {
 	innerW: number;
 	innerH: number;
 	pad: number;
+	/** The bottom band, which may be deeper than the other three sides. */
+	padBottom?: number;
 	width: number;
 	height: number;
 	hasFrame: boolean;
@@ -513,6 +539,7 @@ export function drawOverlayBlock(
 		innerW,
 		innerH,
 		pad,
+		padBottom = pad,
 		width,
 		height,
 		hasFrame,
@@ -529,6 +556,7 @@ export function drawOverlayBlock(
 		innerW,
 		innerH,
 		pad,
+		padBottom,
 		hasFrame,
 		showSwatch,
 		showCode,
@@ -543,7 +571,7 @@ export function drawOverlayBlock(
 	//   framed   -> in the band below the photo, never over the image
 	//   frameless -> on the photo, so it needs a scrim to stay readable
 	const blockTop = hasFrame
-		? innerH + pad + (pad - blockH) / 2
+		? innerH + pad + (padBottom - blockH) / 2
 		: photoInset(height, blockH, unit);
 
 	const inset = hasFrame ? pad : Math.round(unit * 0.035);

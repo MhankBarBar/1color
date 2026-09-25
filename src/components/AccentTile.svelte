@@ -19,13 +19,17 @@
 		target,
 		label = '',
 		width = 34,
-		feather = 35
+		feather = 35,
+		plain = false
 	}: {
 		source: TextureSource;
 		target: Rgb;
 		label?: string;
 		width?: number;
 		feather?: number;
+		/** Draw the photo untouched. Used for the "original" tile, which is what
+		 *  makes the "one photo" claim in the heading checkable. */
+		plain?: boolean;
 	} = $props();
 
 	let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -47,18 +51,26 @@
 			const ph = Math.round(h * dpr);
 			// Skip only when nothing that affects the pixels has changed — the
 			// accent is part of the key, so re-picking a color does repaint.
-			const key = `${pw}x${ph}:${hex}:${width}:${feather}`;
+			const key = `${pw}x${ph}:${hex}:${width}:${feather}:${plain}`;
 			if (key === lastKey) return;
 			lastKey = key;
 			canvas.width = pw;
 			canvas.height = ph;
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return;
+			if (plain) {
+				// Straight draw, no GL round-trip: the untouched photo has nothing to
+				// compute, and it is only ever one tile.
+				ctx.drawImage(source as CanvasImageSource, 0, 0, pw, ph);
+				return;
+			}
 			const rendered = renderThumbnail(
 				source,
 				{ target, width, feather, tone: 0, contrast: 0, preset: 0 },
 				pw,
 				ph
 			);
-			canvas.getContext('2d')?.drawImage(rendered, 0, 0);
+			ctx.drawImage(rendered, 0, 0);
 		};
 
 		paint();
@@ -74,8 +86,16 @@
 <figure class="compare__figure" style:aspect-ratio={aspect}>
 	<canvas bind:this={canvasEl}></canvas>
 </figure>
-<div class="compare__meta">
-	<span class="compare__chip" style:background={hex} aria-hidden="true"></span>
-	<span class="compare__label">{label}</span>
-	<span class="compare__hex">{hex}</span>
-</div>
+{#if plain}
+	<!-- The original is labelled but carries no chip or code: it has no accent to
+	     report, and the label is exactly what makes the comparison readable. -->
+	<div class="compare__meta">
+		<span class="compare__label">{label}</span>
+	</div>
+{:else}
+	<div class="compare__meta">
+		<span class="compare__chip" style:background={hex} aria-hidden="true"></span>
+		<span class="compare__label">{label}</span>
+		<span class="compare__hex">{hex}</span>
+	</div>
+{/if}

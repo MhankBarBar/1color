@@ -18,11 +18,12 @@ export const dict: Record<LocaleId, Dict> = {
 		'hero.title.post': ', lose the rest.',
 		'hero.sub': 'Tap any color in a photo. Everything outside it turns black and white.',
 		'hero.open': 'Open a photo',
-		'hero.samples': 'Or try a sample',
-		'hero.hint': 'Drag across the photo to move the color.',
+		'hero.samples': 'Try a sample',
 
 		'stage.drop': 'Drop a photo, paste, or pick one',
 		'stage.browse': 'Choose a photo',
+		'stage.hint': 'Drag across the photo to move the color.',
+		'editor.coverage': 'Share of the photo keeping its color',
 		'stage.error': 'That file could not be read. Try a JPEG, PNG, or WebP.',
 		'stage.nogl':
 			'This browser has WebGL switched off, which the editor needs. Enable hardware acceleration, or try another browser.',
@@ -60,6 +61,7 @@ export const dict: Record<LocaleId, Dict> = {
 		'out.frame.black': 'Black',
 		'out.frame.accent': 'Color',
 		'out.frame.custom': 'Custom',
+		'out.frame.cheki': 'Instant print',
 		'out.overlays': 'On the image',
 		'out.swatch': 'Swatch',
 		'out.code': 'Code',
@@ -85,6 +87,7 @@ export const dict: Record<LocaleId, Dict> = {
 		'compare.handle': 'Drag to compare',
 
 		'accents.title': 'One photo, four colors.',
+		'accents.original': 'Original',
 		'accents.petals': 'Petals',
 		'accents.leaves': 'Leaves',
 		'accents.sky': 'Sky',
@@ -119,10 +122,11 @@ export const dict: Record<LocaleId, Dict> = {
 		'hero.sub': '写真の中の色をタップするだけ。それ以外はモノクロになります。',
 		'hero.open': '写真を開く',
 		'hero.samples': 'サンプルで試す',
-		'hero.hint': '写真をなぞると、残す色が移り変わります。',
 
 		'stage.drop': '写真をドロップ、貼り付け、または選択',
 		'stage.browse': '写真を選ぶ',
+		'stage.hint': '写真をなぞると、残す色が移り変わります。',
+		'editor.coverage': '色が残る面積',
 		'stage.error': 'このファイルは読み込めませんでした。JPEG・PNG・WebPをお試しください。',
 		'stage.nogl':
 			'このブラウザではWebGLが無効になっています。ハードウェアアクセラレーションを有効にするか、別のブラウザをお試しください。',
@@ -160,6 +164,7 @@ export const dict: Record<LocaleId, Dict> = {
 		'out.frame.black': '黒',
 		'out.frame.accent': '色',
 		'out.frame.custom': 'カスタム',
+		'out.frame.cheki': 'チェキ風',
 		'out.overlays': '写真に載せる',
 		'out.swatch': '色見本',
 		'out.code': 'カラーコード',
@@ -185,6 +190,7 @@ export const dict: Record<LocaleId, Dict> = {
 		'compare.handle': 'ドラッグして比較',
 
 		'accents.title': '同じ一枚を、四つの色で。',
+		'accents.original': '元の写真',
 		'accents.petals': '花びら',
 		'accents.leaves': '葉',
 		'accents.sky': '空',
