@@ -1183,7 +1183,7 @@
 		background: rgb(0 0 0 / 0.8);
 		color: #f6f6f8;
 		font-family: var(--font-body);
-		font-size: 0.8rem;
+		font-size: var(--t-base);
 		line-height: 1.5;
 		text-align: left;
 	}

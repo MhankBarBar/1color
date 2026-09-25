@@ -181,11 +181,6 @@
 
 	const coverage = $derived.by(() => (sampler ? sampler.coverage(target, width, feather) : 0));
 
-	/** The active mode's entry. Falls back to the first, so the panel header always
-	 *  has an icon and a label — the inline `find` returned a maybe-undefined and
-	 *  the markup dereferenced it twice. */
-	const activeMode = $derived(MODES.find((m) => m.id === mode) ?? MODES[0]);
-
 	const palette = $derived(sampler ? sampler.palette : []);
 	const ratioList = $derived([{ id: 'original' }, ...RATIOS.slice(1)]);
 
@@ -439,9 +434,14 @@
 			<button
 				class="mode"
 				class:is-on={mode === m.id}
+				aria-expanded={mode === m.id ? panelOpen : undefined}
 				onclick={() => {
+					// Tapping the active mode folds the panel away; tapping another
+					// switches to it and brings the panel back. The mode row already
+					// names the active mode, so the panel needs no title bar of its
+					// own — that bar repeated the word the row was showing.
+					panelOpen = mode === m.id ? !panelOpen : true;
 					mode = m.id;
-					panelOpen = true;
 				}}
 			>
 				<span class="mode__disc" aria-hidden="true">{@html icon(m.icon)}</span>
@@ -452,10 +452,14 @@
 
 {#if panelOpen}
 		<div class="panel">
-			<button class="panel__head" onclick={() => (panelOpen = false)} aria-expanded="true">
-				<span class="panel__icon" aria-hidden="true">{@html icon(activeMode.icon)}</span>
-				<span class="panel__title">{t(activeMode.key)}</span>
-				<span class="panel__chevron" aria-hidden="true">{@html icon('chevronDown')}</span>
+			<!-- A grab handle, not a title bar. The mode row above already names the
+			     active mode, so repeating it here said "Color" twice in one card.
+			     What the panel did need was a visible way to fold away, which the
+			     old header carried and the mode row cannot show on its own. -->
+			<button class="panel__grip" onclick={() => (panelOpen = false)} aria-expanded="true">
+				<span class="sr">{t('panel.hide')}</span>
+				<span class="panel__grip-bar" aria-hidden="true"></span>
+				<span class="panel__grip-chevron" aria-hidden="true">{@html icon('chevronDown')}</span>
 			</button>
 
 			<div class="panel__body">
@@ -653,10 +657,6 @@
 
 			</div>
 		</div>
-	{:else}
-		<button class="panel__collapsed" onclick={() => (panelOpen = true)}>
-			{t(activeMode.key)}
-		</button>
 	{/if}
 </div>
 
@@ -707,28 +707,6 @@
 		overflow: hidden;
 		clip-path: inset(50%);
 		white-space: nowrap;
-	}
-
-	.panel__chevron {
-		width: 15px;
-		height: 15px;
-		margin-left: auto;
-		color: var(--text-faint);
-		transform: rotate(180deg);
-	}
-
-	.panel__collapsed {
-		width: 100%;
-		padding: 11px 16px;
-		border-top: 1px solid rgb(255 255 255 / 0.06);
-		background: var(--ink-050);
-		color: var(--text-dim);
-		font-size: 0.82rem;
-		text-align: left;
-	}
-
-	.panel__collapsed:hover {
-		color: var(--text);
 	}
 
 	.frame-pick {

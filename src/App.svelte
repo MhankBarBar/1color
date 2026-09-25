@@ -212,6 +212,36 @@
 	function scrollTo(id: string): void {
 		document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 	}
+
+	/**
+	 * Which section the reader is actually in.
+	 *
+	 * The nav marked Editor current with a hardcoded class, so it claimed you were
+	 * in the editor while you read the footer. Observed rather than guessed from
+	 * scroll offsets: the sections differ in height, and an offset comparison gets
+	 * the boundary wrong on whichever one is short.
+	 */
+	let currentSection = $state('editor');
+
+	$effect(() => {
+		const els = ['editor', 'accents', 'live']
+			.map((id) => document.getElementById(id))
+			.filter((el): el is HTMLElement => el !== null);
+		if (!els.length) return;
+
+		const io = new IntersectionObserver(
+			(entries) => {
+				// The band crossing the upper third wins, so the marker moves once
+				// the new section is genuinely the one being read.
+				for (const entry of entries) {
+					if (entry.isIntersecting) currentSection = entry.target.id;
+				}
+			},
+			{ rootMargin: '-25% 0px -65% 0px' }
+		);
+		els.forEach((el) => io.observe(el));
+		return () => io.disconnect();
+	});
 </script>
 
 <svelte:window onpaste={onPaste} />
@@ -223,9 +253,14 @@
 			1color
 		</div>
 		<nav class="nav__links">
-			<button class="nav__link is-current" onclick={() => scrollTo('editor')}>{t('nav.editor')}</button>
-			<button class="nav__link" onclick={() => scrollTo('accents')}>{t('nav.accents')}</button>
-			<button class="nav__link" onclick={() => scrollTo('live')}>{t('nav.live')}</button>
+			{#each [{ id: 'editor', key: 'nav.editor' }, { id: 'accents', key: 'nav.accents' }, { id: 'live', key: 'nav.live' }] as link (link.id)}
+				<button
+					class="nav__link"
+					class:is-current={currentSection === link.id}
+					aria-current={currentSection === link.id ? 'true' : undefined}
+					onclick={() => scrollTo(link.id)}
+				>{t(link.key)}</button>
+			{/each}
 		</nav>
 		<div class="lang" role="group" aria-label={t('lang.switch')}>
 			{#each locales as l (l.id)}

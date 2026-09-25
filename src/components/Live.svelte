@@ -298,7 +298,13 @@
 				<span style="color: var(--accent); width: 34px" aria-hidden="true">
 					{@html icon('camera')}
 				</span>
-				<p>{status === 'starting' ? t('live.waiting') : t('live.privacy')}</p>
+				<!-- Only the transient state gets words here. The privacy line used to
+				     render in this overlay *and* in the notice under the button, so
+				     the same sentence appeared twice on the page. It belongs with the
+				     button, where it answers "what happens if I press this". -->
+				{#if status === 'starting'}
+					<p>{t('live.waiting')}</p>
+				{/if}
 			</div>
 		{/if}
 	</div>
