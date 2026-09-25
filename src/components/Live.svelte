@@ -1,11 +1,7 @@
 <script lang="ts">
-	/**
-	 * Live camera: the same shader driven by the video feed.
-	 *
-	 * The video never leaves the device — it is uploaded straight to a GL texture
-	 * and drawn locally. Capture renders one frame at the camera's own resolution
-	 * and hands it to the editor.
-	 */
+	/** Live camera: the same shader driven by the video feed. The video never leaves the
+	 *  device — it goes straight to a GL texture and is drawn locally. Capture renders one
+	 *  frame at the camera's own resolution and hands it to the editor. */
 	import { Renderer } from '../lib/gl.js';
 	import { rgbToHex } from '../lib/color.js';
 	import { icon } from '../lib/icons.js';
@@ -28,7 +24,7 @@
 	let canvasEl = $state<HTMLCanvasElement | null>(null);
 	let wrapEl = $state<HTMLElement | null>(null);
 
-	let status = $state<Status>('idle'); // idle | starting | live | denied | unsupported
+	let status = $state<Status>('idle');
 	let errorKind = $state<ErrorKind | null>(null);
 	let target = $state<Rgb>({ r: 252, g: 192, b: 0 });
 	let width = $state(30);
@@ -65,8 +61,8 @@
 	$effect(() => {
 		if (!wrapEl) return;
 		const wrap = wrapEl;
-		// Read through a local so the renderer is captured once: it is a plain
-		// variable, and the callback runs long after this effect's setup.
+		// Read through a local: the renderer is a plain variable and the callback runs
+		// long after this effect's setup.
 		const r = renderer;
 		if (!r) return;
 		const ro = new ResizeObserver(([entry]) => {
@@ -114,14 +110,9 @@
 		pump();
 	}
 
-	/**
-	 * Live preview loop.
-	 *
-	 * Two things keep this from being a battery drain: it uploads at most
-	 * `LIVE_FPS` frames per second rather than on every vsync, and it stops
-	 * entirely when the section is scrolled out of view — a camera running at
-	 * full rate for a preview nobody is looking at is pure waste.
-	 */
+	/** Live preview loop. Two things keep this from draining the battery: it uploads at
+	 *  most `LIVE_FPS` frames per second rather than every vsync, and it stops entirely when
+	 *  the section scrolls out of view. */
 	const LIVE_FPS = 30;
 	const FRAME_MS = 1000 / LIVE_FPS;
 
@@ -163,8 +154,8 @@
 		if (status === 'live') status = 'idle';
 	}
 
-	/** Sample the video at a normalized point. Small 1:1 probe canvas, so the
-	 *  readback is exact rather than scaled. */
+	/** Sample the video at a normalized point. Small 1:1 probe canvas, so the readback is
+	 *  exact rather than scaled. */
 	function pickColor(e: MouseEvent): void {
 		const video = videoEl;
 		const canvas = canvasEl;
@@ -215,10 +206,9 @@
 </script>
 
 <div class="live">
-	<!-- The camera leads in the DOM because on a phone it is the point of the
-	     section: the heading and its paragraph used to come first, which pushed the
-	     viewfinder below the fold on the one device this feature is for. Desktop
-	     puts the copy back on the left with `order`. -->
+	<!-- The camera leads in the DOM because on a phone it is the point of the section:
+	     the copy came first and pushed the viewfinder below the fold. Desktop restores
+	     the copy to the left with `order`. -->
 	<div class="live__camera">
 		<div class="live__frame" class:is-live={status === 'live'} bind:this={wrapEl}>
 			<!-- svelte-ignore a11y_media_has_caption -->
@@ -243,9 +233,8 @@
 			{/if}
 		</div>
 
-		<!-- The camera's own control bar, under the viewfinder where a shutter
-		     belongs. It was in the text column, so on a phone the shutter sat above
-		     the preview it fires. -->
+		<!-- The camera's control bar, under the viewfinder where a shutter belongs. In the
+		     text column it sat above the preview it fires. -->
 		{#if status === 'live'}
 			<div class="live__controls">
 				<button class="btn btn--ghost" onclick={stopCamera}>{t('live.stop')}</button>

@@ -1,10 +1,6 @@
 <script lang="ts">
-	/**
-	 * 1color — keep one color in a photo, lose the rest.
-	 *
-	 * English is the default locale; Japanese is the second. The interface tint is
-	 * driven by whichever color is sampled from the photo.
-	 */
+	/** 1color — keep one color in a photo, lose the rest. The tint follows whichever
+	 *  color is sampled from the photo; English is the default locale, Japanese second. */
 	import Editor from './components/Editor.svelte';
 	import Live from './components/Live.svelte';
 	import AccentTile from './components/AccentTile.svelte';
@@ -16,18 +12,18 @@
 	import { createLoadGate } from './lib/loadGate.js';
 	import type { LoadedPhoto, LocaleId, PixelSource, Rgb } from './lib/types.js';
 
-	/** A bundled photo offered on the landing page, with the accent to showcase it. */
+	/** A bundled landing-page photo, with the accent to showcase it. */
 	interface Sample {
 		src: string;
 		label: Record<LocaleId, string>;
 		accent: Rgb;
 	}
 
-	/** A showcase accent read from the loaded photo, with its display label. */
+	/** A showcase accent sampled from the photo, with its label. */
 	type Showcase = { key: string; rgb: Rgb; label: string };
 
-	/** The load lifecycle. The stage only offers its drop target once loading has
-	 *  settled, so the first paint does not flash a prompt the boot sample replaces. */
+	/** Load lifecycle. The stage offers its drop target only once loading settles, so
+	 *  the first paint does not flash a prompt the boot sample replaces. */
 	type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 
 
@@ -54,13 +50,9 @@
 	const LOCALE_KEY = '1color:locale';
 	const VALID_LOCALES: LocaleId[] = locales.map((l) => l.id);
 
-	/**
-	 * Restore the saved language, falling back to English.
-	 *
-	 * Wrapped in try/catch: storage access throws in private mode and in
-	 * sandboxed iframes, and an unreadable preference must not stop the app from
-	 * booting.
-	 */
+	/** Restore the saved language, falling back to English. try/catch because storage
+	 *  access throws in private mode and sandboxed iframes, and an unreadable preference
+	 *  must not stop the app from booting. */
 	function savedLocale(): LocaleId {
 		try {
 			const v = localStorage.getItem(LOCALE_KEY);
@@ -88,9 +80,8 @@
 	let sampler = $state<Sampler | null>(null);
 	let fileInput = $state<HTMLInputElement | null>(null);
 
-	// Starts as 'loading' rather than 'idle': the boot sample always loads on
-	// mount, so declaring that up front means the very first paint shows the
-	// placeholder instead of flashing a drop target for one frame.
+	// Starts 'loading', not 'idle': the boot sample always loads on mount, so the
+	// first paint shows the placeholder instead of flashing a drop target.
 	let loadState = $state<LoadState>('loading');
 	let loadError = $state('');
 
@@ -122,9 +113,8 @@
 		try {
 			const photo: LoadedPhoto = await loadPhoto(blob);
 			if (!loadGate.isCurrent(token)) {
-				// Superseded while decoding. Release the pixels rather than
-				// leaving a large ImageBitmap for the GC to find later. Only an
-				// ImageBitmap owns pixels outside the JS heap.
+				// Superseded while decoding: close the ImageBitmap rather than leave
+				// its pixels for the GC — only an ImageBitmap owns pixels off-heap.
 				if (photo.source instanceof ImageBitmap) photo.source.close();
 				return;
 			}
@@ -202,21 +192,12 @@
 
 	const samples = $derived(SAMPLES.map((s) => ({ src: s.src, label: s.label[locale] })));
 
-	/**
-	 * Which accent the showcase is showing.
-	 *
-	 * A single large photo that swaps its kept color, rather than a row of static
-	 * tiles. The tiles were a grid of near-identical thumbnails — they read as a
-	 * filter picker and buried the one thing the section has to demonstrate, which
-	 * is the transition from color to monochrome on the same frame.
-	 *
-	 * `null` means the untouched photo, which is the reference the other four are
-	 * judged against.
-	 */
+	/** Which accent the showcase is showing; `null` is the untouched photo. One large
+	 *  photo that swaps its kept color, not a row of tiles: the old grid read as a filter
+	 *  picker and buried the transition from color to monochrome. */
 	let showcasePick = $state<number | null>(0);
 
-	// Reset when a new photo arrives, so the picker cannot point past the end of a
-	// shorter palette.
+	// Reset on a new photo, so the picker cannot point past a shorter palette.
 	$effect(() => {
 		void source;
 		showcasePick = 0;
@@ -232,14 +213,9 @@
 		document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 	}
 
-	/**
-	 * Which section the reader is actually in.
-	 *
-	 * The nav marked Editor current with a hardcoded class, so it claimed you were
-	 * in the editor while you read the footer. Observed rather than guessed from
-	 * scroll offsets: the sections differ in height, and an offset comparison gets
-	 * the boundary wrong on whichever one is short.
-	 */
+	/** Which section the reader is in. An IntersectionObserver, not scroll offsets:
+	 *  sections differ in height, so an offset comparison gets the boundary wrong on the
+	 *  short one. The nav used to hardcode Editor as current. */
 	let currentSection = $state('editor');
 
 	$effect(() => {
@@ -332,24 +308,13 @@
 				{/if}
 
 			<!--
-				The hero's right-hand field, on screens wide enough to have one.
+				Hero art: 3D planes, nearest carrying the live accent and the rest stepping
+				down a neutral ramp. Re-tints for free; --accent is a :root variable.
 
-				A fan of planes in 3D: the nearest carries the live accent, the ones
-				behind step down a neutral ramp. The product's own idea — one color
-				survives, the rest go grey — as an object rather than a sentence. It
-				re-tints for free, because --accent is a variable on :root.
-
-				It hangs off the copy block rather than the grid. Anchored to the grid
-				it centred on the copy *and* the editor card together, which put it
-				behind the card — the card is opaque and paints later, so the fan was
-				in the DOM and invisible. It also emerges from behind the card's top
-				edge, which is the effect worth having.
-
-				CSS 3D rather than WebGL on purpose. The app keeps one live GL context
-				for its thumbnails and browsers cap how many a page may hold, so
-				ornament must not spend a second one.
-
-				Decorative, so it is hidden from assistive tech and never carries text.
+				Anchored to the copy block, not the grid — on the grid it centred on the copy
+				and the card together and landed behind the opaque card. CSS 3D, not WebGL:
+				the app keeps one live GL context for thumbnails and browsers cap how many a
+				page may hold.
 			-->
 			<div class="hero__art" aria-hidden="true">
 				<div class="hero__fan">
@@ -380,11 +345,9 @@
 			</div>
 
 			{#if source && showcase.length}
-				<!-- One large frame that swaps its kept color, with the palette as the
-				     control. The previous five-tile grid showed every result at once but
-				     nothing of the transition, and at thumbnail size the four edits
-				     looked nearly identical. Here the photo is big enough to see what
-				     "one color" actually means, and tapping a swatch repaints it. -->
+				<!-- One large frame that swaps its kept color, palette as the control:
+				     the old five-tile grid showed every result but none of the
+				     transition, and at thumbnail size the edits looked identical. -->
 				<div class="showcase">
 					<div class="showcase__frame">
 						<AccentTile

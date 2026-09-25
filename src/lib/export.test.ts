@@ -1,7 +1,6 @@
-// Tests for the parts of the export path that are pure logic: output geometry,
-// frame selection, overlay placement, and region hit-testing. The pixel
-// composition itself is not exercised; placement is asserted by recording the
-// draw calls, which needs no canvas.
+// Tests for the pure-logic parts of the export path: output geometry, frame
+// selection, overlay placement, and region hit-testing. The pixel composition
+// itself is not exercised; placement is asserted by recording draw calls.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -102,14 +101,9 @@ function stubGl(): unknown {
 	};
 }
 
-/**
- * Install a stub `document` and `URL`, recording every canvas the export builds.
- *
- * `toBlob` reproduces the failure that matters: past the ceiling a real browser
- * hands back `null` rather than throwing. The export has to keep every canvas it
- * creates under that limit, and the only honest way to check is to let the same
- * refusal happen here.
- */
+/** Install a stub `document` and `URL`, recording every canvas the export builds.
+ *  `toBlob` hands back `null` past the ceiling rather than throwing, so letting the
+ *  same refusal happen here is the only honest check. */
 function stubDom(sizes: Array<{ w: number; h: number }>): () => void {
 	const previousDocument = (globalThis as Record<string, unknown>).document;
 	const previousUrl = (globalThis as Record<string, unknown>).URL;
@@ -211,8 +205,7 @@ test('an instant-print frame deepens only its foot', () => {
 	const plain = composeGeometry({ ...base, frame: 'white' });
 	const cheki = composeGeometry({ ...base, frame: 'cheki' });
 
-	// The three other sides are untouched, so only the foot is what makes it read
-	// as a print rather than a white border.
+	// Only the foot differs; the other sides keep it reading as a print, not a border.
 	assert.equal(cheki.pad, plain.pad, 'sides and top must match a plain frame');
 	assert.ok(
 		cheki.padBottom > cheki.pad * 2,
@@ -280,13 +273,9 @@ test('the overlay block sits inside the instant-print foot', () => {
 });
 
 test('preview and export agree on the composition geometry', () => {
-	// The stage preview and the export both call composeGeometry, so this guards
-	// the thing that actually matters: that neither re-derives the frame band by
-	// hand. The preview composes in the photo's own pixels and the export in
-	// output pixels, so the numbers differ but every ratio must match exactly.
-	//
-	// It originally asserted only the aspect ratio with padding derived inline,
-	// which is why the overlay block could need more room than the band had.
+	// Both call composeGeometry, so this guards that neither re-derives the frame
+	// band by hand. Different pixel scales, so the numbers differ but every ratio
+	// must match. It once checked only the aspect ratio, hence the block overflow.
 	const imgW = 1200;
 	const imgH = 800;
 
@@ -303,8 +292,7 @@ test('preview and export agree on the composition geometry', () => {
 					approx(preview.aspect, exported.aspect, 1e-9),
 					`${label}: aspect ${preview.aspect} vs ${exported.aspect}`
 				);
-				// The band as a fraction of the width is what the preview scales to
-				// pixels, so it has to be scale-invariant.
+				// The preview scales this fraction to pixels, so it must be scale-invariant.
 				const pf = preview.pad / preview.outW;
 				const ef = exported.pad / exported.outW;
 				assert.ok(approx(pf, ef, 1e-9), `${label}: pad fraction ${pf} vs ${ef}`);
@@ -314,14 +302,9 @@ test('preview and export agree on the composition geometry', () => {
 });
 
 test('the export canvas never exceeds what a browser will allocate', async () => {
-	// A canvas past the ceiling does not throw: the 2D context silently stops
-	// drawing and `toBlob` calls back with `null`, so the export failed with a
-	// generic message on every browser at `max` quality with a frame.
-	//
-	// This drives `exportComposite` itself, with a stubbed DOM that records every
-	// canvas it asks for and refuses to encode one past the ceiling — the way a
-	// real browser behaves. Asserting the fitting helper alone would have passed
-	// while the export ignored it.
+	// Past the ceiling the 2D context silently stops drawing and `toBlob` returns
+	// `null`, so this drives `exportComposite` against a stub that refuses to encode
+	// an over-limit canvas — the fitting helper alone would pass while it ignored it.
 	const canvases: Array<{ w: number; h: number }> = [];
 	const restore = stubDom(canvases);
 
@@ -418,9 +401,8 @@ test('the export canvas never exceeds what a browser will allocate', async () =>
 
 test('the band is exactly the margin, and the block is fitted to it', () => {
 	// The band used to be floored at the overlay block's height, which pinned the
-	// margin slider: the floor was larger than anything the slider could request,
-	// so dragging it changed nothing anywhere in its range. The band is the margin
-	// now, and the block shrinks to fit instead.
+	// margin slider: the floor exceeded anything the slider could request, so
+	// dragging it changed nothing. The band is the margin now; the block fits.
 	const imgW = 4032;
 	const imgH = 3024;
 	const unit = Math.min(imgW, imgH);
@@ -515,8 +497,8 @@ test('the block is fitted to the band, which the drawn font proves', () => {
 		const rows = (showSwatch || showCode ? 1 : 0) + (showMix ? 1 : 0);
 
 		const floor = overlayMinMargin({ showSwatch, showCode, showMix });
-		// A tall band and the shortest band the slider actually offers, to show the
-		// block changes size and never dips below legibility in that range.
+		// The tallest band and the shortest the slider offers, to show the block
+		// changes size without dipping below legibility.
 		const roomy = paint({ frame: 'white', margin: 100, showSwatch, showCode, showMix });
 		const tight = paint({ frame: 'white', margin: floor, showSwatch, showCode, showMix });
 
@@ -554,8 +536,8 @@ test('the block is fitted to the band, which the drawn font proves', () => {
 });
 
 test('the margin floor rises with the number of overlay rows', () => {
-	// More rows need a taller band, so the slider starts higher. A floor that did
-	// not move would either clip the block or leave a dead zone again.
+	// More rows need a taller band. A fixed floor would clip the block or leave a
+	// dead zone again.
 	const one = overlayMinMargin({ showSwatch: false, showCode: true, showMix: false });
 	const two = overlayMinMargin({ showSwatch: true, showCode: true, showMix: true });
 	assert.ok(two > one, `two rows ${two} must need more than one row ${one}`);
@@ -580,13 +562,9 @@ test('a margin larger than the block is honoured unchanged', () => {
 });
 
 test('the overlay preview canvas spans the whole composition, not just the photo', () => {
-	// The preview canvas is positioned against the photo box but has to cover the
-	// frame band too, since the block is drawn in the band. It does that with a
-	// negative inset of one band width and an explicit composition-sized width.
-	//
-	// The inset and the size are the test: if either is dropped the canvas falls
-	// back to the photo box, and `app.css`'s `canvas { max-width: 100% }` clamps it
-	// there — which is what put the block on top of the image instead of the frame.
+	// Positioned against the photo box but must cover the frame band, since the
+	// block is drawn there. Drop the negative inset or the composition-sized width
+	// and `app.css`'s `max-width: 100%` clamps it to the photo, over the image.
 	const imgW = 4032;
 	const imgH = 3024;
 	const g = composeGeometry({
@@ -600,8 +578,8 @@ test('the overlay preview canvas spans the whole composition, not just the photo
 		showMix: true
 	});
 
-	// The band is the frame's CSS padding, so the inset and the composition scale
-	// together. Both must stay strictly positive for the canvas to reach the band.
+	// The band is the frame's CSS padding, so both must stay strictly positive for
+	// the canvas to reach it.
 	assert.ok(g.pad > 0, 'a framed composition must have a band');
 	assert.ok(g.padFrac > 0 && g.padFrac < 0.5, `band fraction out of range: ${g.padFrac}`);
 
@@ -629,16 +607,12 @@ test('a frameless photo gets no band, whatever the overlays', () => {
 });
 
 // --- overlay painting ------------------------------------------------------
-//
-// The block's placement is asserted against a recording context, so it can be
-// checked without rendering anything. This is the guard for the bug where the
-// overlay controls drew nothing on screen: they were only ever painted into the
-// exported file.
+// Placement asserted against a recording context, no rendering needed. Guards the
+// bug where overlays drew nothing on screen, only into the exported file.
 
-/** One recorded canvas call: the method name, then its arguments. The arguments
- *  are genuinely dynamic — a recording proxy has no idea what it will be asked
- *  for — so they stay `unknown` and are read through the narrow helpers below
- *  rather than asserted into place at every call site. */
+/** One recorded canvas call: the method name, then its arguments. A recording
+ *  proxy cannot know what it will be asked for, so they stay `unknown` and are
+ *  read through the helpers below rather than asserted at every call site. */
 type Call = [name: string, ...args: unknown[]];
 
 /** Read a numeric argument of a recorded call, naming the call on failure. */

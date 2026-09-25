@@ -1,13 +1,10 @@
 /**
  * Monotonic token for overlapping async loads.
  *
- * Loads genuinely overlap here: the boot sample starts fetching on mount, and a
- * user can pick their own photo before it finishes decoding. Whichever settles
- * last wins in a naive implementation — so the slow sample would silently
- * replace the photo the user just chose. Each load claims a token and checks it
- * before committing; anything superseded is discarded.
- *
- * Kept as its own unit rather than inlined so the ordering rule can be tested.
+ * The boot sample starts fetching on mount and the user can pick a photo before
+ * it finishes decoding; naively the last to settle wins, so the slow sample would
+ * silently replace the photo just chosen. Each load claims a token and checks it
+ * before committing, discarding superseded loads.
  */
 export interface LoadGate {
 	/** Claim the newest token. Invalidates every load already in flight. */

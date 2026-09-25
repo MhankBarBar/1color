@@ -1,4 +1,4 @@
-// Image intake: file, drag-drop, clipboard, URL. Everything is normalised to an
+// Image intake: file, drag-drop, clipboard, URL. Everything normalises to an
 // ImageBitmap so the GL upload path is one call.
 
 import type { LoadedPhoto, PixelSource } from './types.js';
@@ -7,12 +7,10 @@ import type { LoadedPhoto, PixelSource } from './types.js';
 const MAX_EDGE = 4096;
 
 export async function bitmapFromBlob(blob: Blob): Promise<PixelSource> {
-	// `createImageBitmap` is the fast path, but it is not universal and its
-	// options are not uniformly implemented: WebKit gained the `imageOrientation`
-	// option well after the function itself, and a browser that does not know an
-	// option is entitled to reject the whole call rather than ignore it. Requiring
-	// it meant a photo could not be opened at all on those browsers — the failure
-	// surfaced as the same "could not be read" message as a corrupt file.
+	// `createImageBitmap` is the fast path, but its options are not uniformly
+	// implemented: WebKit gained `imageOrientation` well after the function itself,
+	// and a browser that does not know an option may reject the whole call — which
+	// made photos unopenable on those browsers.
 	if (typeof createImageBitmap === 'function') {
 		try {
 			// `from-image` bakes in EXIF orientation so phone photos arrive upright.
@@ -21,21 +19,17 @@ export async function bitmapFromBlob(blob: Blob): Promise<PixelSource> {
 			try {
 				return await createImageBitmap(blob);
 			} catch {
-				// Options unsupported or the decode failed; the element path below
-				// is the fallback that keeps WebKit working.
+				// Options unsupported or decode failed; the element path below
+				// keeps WebKit working.
 			}
 		}
 	}
 	return elementFromBlob(blob);
 }
 
-/**
- * Decode through an `<img>`, the path every browser has.
- *
- * Browsers apply EXIF orientation to `<img>` by default now, so a photo still
- * arrives upright. Slower than `createImageBitmap`, which is why it is the
- * fallback rather than the default.
- */
+/** Decode through an `<img>`, the path every browser has. Browsers apply EXIF
+ *  orientation to `<img>` by default now, so photos still arrive upright; slower
+ *  than `createImageBitmap`, hence the fallback role. */
 async function elementFromBlob(blob: Blob): Promise<HTMLImageElement> {
 	const url = URL.createObjectURL(blob);
 	try {
@@ -56,14 +50,10 @@ export async function bitmapFromUrl(url: string): Promise<PixelSource> {
 	return bitmapFromBlob(await res.blob());
 }
 
-/**
- * Cap the long edge. Keeps uploads and per-frame GPU work bounded.
- *
- * The decoded bitmap is closed when it is replaced: an ImageBitmap holds its
- * pixels outside the JS heap, so dropping the reference does not free them until
- * GC gets around to it. Re-importing photos would otherwise pile up tens of
- * megabytes each time.
- */
+/** Cap the long edge, keeping uploads and per-frame GPU work bounded.
+ *  The replaced bitmap is closed explicitly: an ImageBitmap holds its pixels
+ *  outside the JS heap, so dropping the reference does not free them until GC
+ *  runs and re-imports would pile up tens of megabytes each time. */
 export function fitBitmap(bmp: PixelSource, maxEdge = MAX_EDGE): PixelSource {
 	const long = Math.max(bmp.width, bmp.height);
 	if (long <= maxEdge) return bmp;
@@ -113,7 +103,7 @@ export const isAccepted = (file: Blob | null | undefined): boolean => {
 	if (!file) return false;
 	if (ACCEPTED.includes(file.type)) return true;
 	// Only a File carries a name; a captured frame has none, so the extension
-	// fallback simply does not apply to it.
+	// fallback does not apply to it.
 	const name = file instanceof File ? file.name : '';
 	return /\.(jpe?g|png|webp|avif|gif)$/i.test(name);
 };

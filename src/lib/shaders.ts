@@ -1,16 +1,6 @@
-// Shader sources for the selective-color pass.
-//
-// Two dialect pairs are provided. The math is identical in both — only the
-// syntax differs — because WebGL2 is not universally available: Chrome on
-// Android blocklists it on a number of Adreno/Mali drivers and drops it under
-// GPU-process memory pressure, and Safari only shipped it in 15. Requiring it
-// meant the whole app refused to start on those devices.
-//
-//   ES 3.00 (WebGL2): `in`/`out`, `texture()`, a declared `out` fragment color.
-//   ES 1.00 (WebGL1): `attribute`/`varying`, `texture2D()`, `gl_FragColor`,
-//                     plus a GLSL 1.00 precision guard for `int` comparisons.
-//
-// color.js mirrors this math; the test suite asserts the two agree.
+// Shader sources for the selective-color pass, in two dialects with identical math (ES 3.00
+// `in`/`out`+`texture()`, ES 1.00 `attribute`/`varying`+`texture2D()`). WebGL2 is not universal:
+// Android Chrome blocklists it on Adreno/Mali and Safari shipped it only in 15. color.js mirrors it.
 
 const BODY = `
 vec3 toLinear(vec3 c) {
@@ -39,21 +29,9 @@ vec4 hsv(vec3 c) {
 
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
-// Hue distance gated by saturation; falls back to a brightness match when the
-// target has no hue of its own. Must stay identical to accentDistance().
-//
-// The ratio test alone is not enough: near black it is meaningless, because
-// converting sRGB to linear compresses the channel spread. rgb(4,2,1) reports a
-// 0.75 ratio while being visually black, which made a near-black target act as a
-// hue carrier. The absolute spread in .w is the honest test there.
-//
-// The brightness comparison goes through sqrt for the same reason: linear light
-// squeezes every dark tone together, so a black target kept dark green leaves.
-// sqrt approximates the sRGB curve closely enough and is cheap here.
-//
-// The pixel must also be neutral itself, judged as its chroma minus the
-// target's: the saturation ratio cannot do it, because a neutral near-black
-// reports 0.31 and the leaves report 0.91, so no threshold separates them.
+// Hue distance gated by saturation, falling back to a brightness match for a hue-less
+// target. Must stay identical to accentDistance(): the .w spread test, the sqrt on
+// brightness, and the neutrality gate all exist because rgb(4,2,1) is visually black.
 float accentDist(vec3 a, vec3 b) {
 	vec4 A = hsv(a);
 	vec4 B = hsv(b);
@@ -98,16 +76,13 @@ const MAIN = (
 ) => `
 void main() {
 	// The ratio crops rather than distorts: uCrop is the kept rect in normalised
-	// photo units. Sampling the image and the mask through the same rect keeps
-	// them registered with each other, so a region mask still lines up with the
-	// pixels it was drawn over.
+	// photo units. Sampling image and mask through the same rect keeps them
+	// registered, so a region mask still lines up with the pixels it was drawn over.
 	vec2 uv = uCrop.xy + vUv * uCrop.zw;
 	vec4 src = ${sampleFn}(uImage, uv);
 
-	// Before/after comparison: pass the original straight through. Doing this in
-	// the shader keeps the comparison on the same pipeline, so the "before" is
-	// genuinely the untouched source rather than a second render path that could
-	// drift from it.
+	// Doing the before/after comparison in the shader keeps the "before" on the same
+	// pipeline — genuinely the untouched source, not a second path that could drift.
 	if (uBypass > 0.5) {
 		${writeFn('src')};
 		return;
@@ -170,9 +145,9 @@ varying vec2 vUv;
 ${BODY}
 ${MAIN('texture2D', (expr: string): string => `gl_FragColor = ${expr}`)}`;
 
-/** Every uniform the fragment shader declares, in both dialects. The Renderer
- *  looks each of these up by name, so a name here that is missing there is a
- *  silent no-op — the test suite asserts the two lists match. */
+/** Every uniform the fragment shader declares, in both dialects. The Renderer looks
+ *  each up by name, so a name here missing there is a silent no-op — the test suite
+ *  asserts the two lists match. */
 export const UNIFORMS = [
 	'uImage',
 	'uMask',
@@ -187,12 +162,12 @@ export const UNIFORMS = [
 	'uCrop'
 ] as const;
 
-/** The name of one shader uniform. Derived from `UNIFORMS` so the renderer's
- *  lookup table and the shader's declarations cannot drift apart silently. */
+/** The name of one shader uniform. Derived from `UNIFORMS` so the renderer's lookup
+ *  table and the shader's declarations cannot drift apart silently. */
 export type UniformName = (typeof UNIFORMS)[number];
 
-/** Exported so the tests can check the shaders against the JS wiring without a
- *  GL context. `UNIFORMS` is the contract between the two. */
+/** Exported so tests can check the shaders against the JS wiring without a GL
+ *  context; `UNIFORMS` is the contract between the two. */
 export const SHADERS = {
 	vert300: VERT_300,
 	frag300: FRAG_300,

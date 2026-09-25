@@ -1,8 +1,6 @@
 // CPU-side analysis of the loaded photo: color sampling for taps, the coverage
-// readout, the photo's own palette, and the four showcase accents.
-//
-// Kept deliberately separate from gl.js — the shader is the source of truth for
-// pixels, this module is the source of truth for numbers shown as text.
+// readout, the photo's palette, and the four showcase accents. Separate from
+// gl.js by design: the shader owns pixels, this module the numbers shown as text.
 
 import type { Hsv, PixelSource, Rgb } from './types.js';
 import {
@@ -19,20 +17,11 @@ const PICK_EDGE = 1024;
 /** Side of the coverage grid. 80x80 = 6,400 samples across the whole photo. */
 const COVER_GRID = 80;
 
-/**
- * Sample pixels for the coverage readout, spread by a low-discrepancy sequence.
- *
- * Neither a linear stride nor a regular grid is safe here: both resonate with
- * repeating structure in the photo. Measured on a sunflower field, a stride of 3
- * reported 31.5% coverage against a true 10.7%; a plain grid hit the same
- * problem on synthetic stripes (0% against a true 33%), and staggering alternate
- * rows only moved it to 50%.
- *
- * A Kronecker sequence — x advancing by the golden ratio, y sweeping linearly —
- * has no period to resonate with, so the estimate stays accurate on any pattern
- * while remaining O(samples). Deterministic, so a given photo always reports the
- * same figure.
- */
+/** Sample pixels for the coverage readout, spread by a low-discrepancy sequence.
+ *  Neither a stride nor a regular grid is safe: both resonate with repeating
+ *  structure — a stride of 3 read 31.5% against a true 10.7% on a sunflower field,
+ *  and a plain grid 0% against a true 33% on stripes. A Kronecker sequence, x by
+ *  the golden ratio and y sweeping linearly, has no period to resonate with. */
 const GOLDEN = 0.6180339887498949;
 
 function coverGrid(data: Uint8ClampedArray, w: number, h: number, grid: number): Uint8Array {
@@ -104,16 +93,15 @@ export class Sampler {
 		return { r: r / n, g: g / n, b: b / n };
 	}
 
-	/** Share of the photo that keeps color at these settings, 0..1.
-	 *
-	 * Runs over a fixed 2D grid of the whole frame rather than a linear stride,
-	 * so the figure is stable and cannot alias against repeating detail. See
-	 * `coverGrid` for why a stride is wrong here. */
+	/** Share of the photo that keeps color at these settings, 0..1. Runs over the
+	 *  fixed 2D cover grid, not a linear stride, so the figure cannot alias against
+	 *  repeating detail; see `coverGrid`. */
 	coverage(target: Rgb, width: number, feather: number): number {
 		const g = this.cover;
 		const e0 = widthToDist(width);
 		const fd = featherToDist(feather);
-		// Two reusable records, created once per scan rather than per sample.
+		// Two reusable records, created once per scan rather than per sample: the
+		// scan runs over every cover sample and must not allocate.
 		const sA: Hsv = { h: 0, s: 0, v: 0, d: 0 };
 		const sB: Hsv = { h: 0, s: 0, v: 0, d: 0 };
 		let kept = 0;
@@ -184,11 +172,9 @@ export interface ShowcaseAccent {
 	rgb: Rgb;
 }
 
-/**
- * Four accents read out of the photo itself: the strongest warm hue, the
- * strongest green, the strongest cool, and the deepest shadow. Labels come
- * from the dictionary, so the keys are stable.
- */
+/** Four accents read out of the photo: the strongest warm hue, the strongest
+ *  green, the strongest cool, and the deepest shadow. Labels come from the
+ *  dictionary, so the keys are stable. */
 export function showcaseAccents(palette: Rgb[]): ShowcaseAccent[] {
 	const scored: Scored[] = palette.map((c) => ({ c, h: hueOf(c), s: satOf(c), l: (c.r + c.g + c.b) / 765 }));
 	const best = (pred: (h: number) => boolean) =>

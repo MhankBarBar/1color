@@ -1,13 +1,6 @@
-// Regression tests for the color matcher.
-//
-// The invariant that matters: color.ts is the CPU mirror of the fragment shader
-// in gl.ts, and the two are edited independently. If they drift, the coverage
-// readout and the pixels disagree — a real bug this file exists to catch.
-//
-//   npm test
-//
-// The shader functions are transcribed here rather than imported (GLSL is not
-// TS), so when you change gl.ts, change the transcription too.
+// Regression tests for the color matcher: color.ts mirrors the fragment shader in gl.ts,
+// edited independently, and drift makes the coverage readout disagree with the pixels.
+// The shader functions are transcribed here (GLSL is not TS), so change both together.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -61,10 +54,9 @@ const sstep = (e0: number, e1: number, x: number): number => {
 function shaderDist(a: Rgb, b: Rgb): number {
 	const A = shaderHsv(a);
 	const B = shaderHsv(b);
-	// The absolute-spread test mirrors `B.w` in the fragment shader. Without it a
-	// near-black target is treated as a hue carrier, because the saturation ratio
-	// is meaningless there. The brightness comparison goes through sqrt so dark
-	// tones are compared perceptually, and the pixel must be neutral itself.
+	// Mirrors `B.w` in the fragment shader: without the absolute-spread test a
+	// near-black target acts as a hue carrier, the ratio being meaningless there.
+	// Brightness goes through sqrt so dark tones compare perceptually.
 	if (B.s < 0.15 || B.d < 0.012) {
 		const bright = Math.min(1, Math.abs(Math.sqrt(A.v) - Math.sqrt(B.v)) * 1.6);
 		const gate = sstep(0.002, 0.008, A.d - B.d);
@@ -150,8 +142,8 @@ test('accentDistance agrees with the shader distance', () => {
 // --- the behavior the app is named for -------------------------------------
 
 test('one hue family survives across the whole exposure range', () => {
-	// A sunflower lit, mid, and in shadow must all keep their color. This is the
-	// reason the matcher works in linear-light hue rather than RGB distance.
+	// A sunflower lit, mid, and in shadow must all keep their color — the reason the
+	// matcher works in linear-light hue rather than RGB distance.
 	const exposure = [0.95, 0.8, 0.6, 0.4, 0.25, 0.12, 0.05];
 	for (const l of exposure) {
 		const c = hsl(43, 0.95, l);
@@ -195,34 +187,30 @@ test('a neutral target matches brightness instead of hue', () => {
 });
 
 test('a near-black target matches brightness, not the hue its ratio implies', () => {
-	// Regression. rgb(4,2,1) reports a 0.75 saturation ratio while being visually
-	// black — the ratio is high only because sRGB-to-linear compresses the channel
-	// spread. Testing the ratio alone made this target a hue carrier at 20 degrees,
-	// which at the default width admitted the sunflower yellow (37 degrees), so the
-	// showcase's "Shade" accent kept the petals in color.
+	// Regression: rgb(4,2,1) reports a 0.75 saturation ratio while being visually
+	// black, because sRGB-to-linear compresses the channel spread. Testing the ratio
+	// alone made it a hue carrier at 20 degrees, admitting the sunflower yellow at 37.
 	const shadow = { r: 4, g: 2, b: 1 };
 	assert.ok(
 		matchAlpha(GOLD, shadow, 30, 40) < 0.5,
 		'the sunflower yellow survived a black target'
 	);
-	// A genuinely dark but colored target must still behave as a hue: the leaf
-	// green's absolute spread is 0.041, well clear of the floor.
+	// A genuinely dark but colored target must still behave as a hue: leaf green's
+	// absolute spread is 0.041, well clear of the floor.
 	const leaf = { r: 19, g: 59, b: 3 };
 	assert.ok(matchAlpha(leaf, leaf, 30, 40) > 0.9, 'a dark green stopped matching itself');
 	assert.ok(matchAlpha(GOLD, leaf, 30, 40) < 0.5, 'yellow kept by a green target');
 
-	// And the leaves must not survive the black target either. Linear-light
-	// brightness put them 0.04 apart, under the tolerance, so a black target kept
-	// the foliage; compared perceptually the gap is 0.17 and they drop.
+	// The leaves must not survive the black target either: linear-light brightness
+	// puts them 0.04 apart, under the tolerance, while perceptually the gap is 0.17.
 	assert.ok(
 		matchAlpha(leaf, shadow, 30, 40) < 0.5,
 		'the green leaves survived a black target'
 	);
 
-	// The exact pixel sampled out of the rendered showcase, where the leaves were
-	// still visibly green under the Shade accent. Its absolute chroma is 0.0118 —
-	// just under the floor — so it took the brightness path and matched black at
-	// 93%. A near-black target may only keep pixels that are themselves neutral.
+	// The pixel sampled out of the rendered showcase, where the leaves were still
+	// green under the Shade accent: chroma 0.0118, just under the floor, so it took the
+	// brightness path and matched black at 93%.
 	const measuredLeaf = { r: 15, g: 30, b: 4 };
 	assert.ok(
 		matchAlpha(measuredLeaf, shadow, 30, 40) < 0.5,
@@ -230,8 +218,8 @@ test('a near-black target matches brightness, not the hue its ratio implies', ()
 	);
 	// Neutral shadows, which the accent is named for, must still be kept.
 	assert.ok(matchAlpha({ r: 14, g: 12, b: 10 }, shadow, 30, 40) > 0.5, 'neutral shadow dropped');
-	// A neutral well above the target's brightness is not "shade" and must drop —
-	// the accent targets the darkest region, not every grey in the photo.
+	// A neutral well above the target's brightness is not "shade": the accent targets
+	// the darkest region, not every grey in the photo.
 	assert.ok(matchAlpha({ r: 60, g: 58, b: 56 }, shadow, 30, 40) < 0.5, 'mid grey kept as shade');
 });
 
@@ -291,7 +279,7 @@ test('palette ranks the dominant color first and stays distinct', () => {
 
 test('near-black shadows do not outrank real color', () => {
 	// Regression: rgb(4,2,1) reports ~83% saturation while being visually black.
-	// Scoring on saturation ratio let shadow buckets dominate any real photo.
+	// Scoring on the ratio let shadow buckets dominate any real photo.
 	const n = 64;
 	const data = new Uint8ClampedArray(n * n * 4);
 	for (let i = 0; i < n * n; i++) {
@@ -361,7 +349,6 @@ test('reused scratch records do not leak state between samples', () => {
 	const fresh = px.map((p) => matchAlphaRgb(p[0], p[1], p[2], target, e0, fd));
 	assert.deepEqual(withScratch, fresh);
 
-	// Re-running the same sequence must give identical output.
 	const again = px.map((p) => matchAlphaRgb(p[0], p[1], p[2], target, e0, fd, sA, sB));
 	assert.deepEqual(again, withScratch);
 });

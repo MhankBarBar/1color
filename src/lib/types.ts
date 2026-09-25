@@ -1,13 +1,9 @@
-// Shared domain types.
-//
-// These are the shapes that cross module boundaries. They live in one file so a
-// change to, say, the crop rect is a single edit that the compiler then checks
-// against every consumer — the class of bug that motivated this port was exactly
-// a field-name mismatch between two modules, which nothing but a type could have
-// caught.
+// Shared domain types: the shapes that cross module boundaries. One file so a
+// change is a single edit the compiler checks against every consumer — a
+// field-name mismatch between two modules is what motivated this port.
 
-/** A colour, 0-255 per channel. Integer after `hexToRgb` or `paletteFromImageData`,
- *  but fractional in between (bucket averages), so the channels stay `number`. */
+/** A colour, 0-255 per channel. Integer after `hexToRgb`/`paletteFromImageData`,
+ *  fractional in between (bucket averages), so the channels stay `number`. */
 export interface Rgb {
 	r: number;
 	g: number;
@@ -37,12 +33,11 @@ export type Align = 'left' | 'center' | 'right';
 /** The frame fill selector. */
 export type FrameId = 'none' | 'white' | 'black' | 'accent' | 'custom' | 'cheki';
 
-/** The region tool. `circle` and `rect` are parametric; `lasso` and `brush` are
- *  raster masks built from points. */
+/** The region tool: `circle`/`rect` parametric, `lasso`/`brush` raster from points. */
 export type ShapeKind = 'circle' | 'rect' | 'lasso' | 'brush';
 
-/** A parametric region. `cx`/`cy`/`w`/`h` are normalised image units; `rot` is
- *  radians. Only circle and rect ever have one — see `shapeForTool`. */
+/** A parametric region. `cx`/`cy`/`w`/`h` normalised image units, `rot` radians.
+ *  Only circle and rect have one — see `shapeForTool`. */
 export interface Shape {
 	kind: 'circle' | 'rect';
 	cx: number;
@@ -109,15 +104,14 @@ export interface RenderParams {
 }
 
 /** A partially-specified render param set. The renderer merges these over its
- *  defaults, so every field is genuinely optional — `target` included. */
+ *  defaults, so every field is optional — `target` included. */
 export type RenderParamsInput = Partial<RenderParams>;
 
-/** Anything the renderer or the sampler will accept as pixels. `fitBitmap`
- *  returns a canvas instead of a bitmap when it has to downscale. */
+/** Anything the renderer or sampler accepts. `fitBitmap` returns a canvas when it
+ *  has to downscale. */
 export type PixelSource = ImageBitmap | HTMLCanvasElement | HTMLImageElement;
 
-/** Anything `texImage2D` will accept here: the still sources plus a video frame
- *  from the live camera path. */
+/** Anything `texImage2D` accepts here: the still sources plus a camera video frame. */
 export type TextureSource = PixelSource | HTMLVideoElement;
 
 /** What `loadPhoto` resolves to: the decodable source, and a display name. */
@@ -133,8 +127,7 @@ export interface Geometry {
 	innerH: number;
 	/** Side and top band. */
 	pad: number;
-	/** Bottom band. Equal to `pad` except for an instant-print frame, which has a
-	 *  deliberately deeper foot. */
+	/** Bottom band. Deeper than `pad` only for an instant print's foot. */
 	padBottom: number;
 	outW: number;
 	outH: number;
@@ -150,9 +143,8 @@ export interface Geometry {
 /** A locale's string table. Keys are dotted paths (`out.frame.white`). */
 export type Dict = Record<string, string>;
 
-/** The supported locales. English is the default, Japanese the second. A union
- *  rather than `string` so the dictionary and every per-locale value can be
- *  indexed without a cast. */
+/** The supported locales; English default, Japanese second. A union so the
+ *  dictionary and per-locale values index without a cast. */
 export type LocaleId = 'en' | 'ja';
 
 /** A supported locale, as offered in the language switcher. */

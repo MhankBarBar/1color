@@ -1,6 +1,6 @@
-// Full-resolution export. Rebuilds the whole composition at output size rather
-// than upscaling the on-screen canvas: frame, margin, photo, and the optional
-// swatch / color-code / color-mix overlays.
+// Full-resolution export. Rebuilds the composition at output size rather than
+// upscaling the on-screen canvas: frame, margin, photo, and the optional
+// swatch / code / mix overlays.
 
 import { Renderer } from './gl.js';
 import { MaskLayer } from './mask.js';
@@ -38,19 +38,9 @@ export const RATIOS: Ratio[] = [
 
 const QUALITY: Record<QualityId, number> = { std: 2048, max: Infinity };
 
-/**
- * The largest canvas this export is allowed to build.
- *
- * iOS Safari refuses a canvas over 4096 on a side or roughly 16.7M pixels in
- * total, and a good number of Android GPUs are no better. Past the ceiling the
- * failure is silent: the 2D context stops accepting draws and `toBlob` calls
- * back with `null`, so the export threw on a phone while the identical settings
- * worked on desktop. It bites hardest at `max` quality with a frame, where a
- * 12MP photo plus padding reaches 5120x4112 — over both limits.
- *
- * The cap applies to the *finished* composition, frame padding included,
- * because that is the canvas that actually gets created.
- */
+/** The largest canvas this export may build, frame padding included. iOS Safari
+ *  and many Android GPUs refuse more, and the failure is silent — the 2D context
+ *  stops drawing and `toBlob` returns `null`, so it threw on a phone only. */
 export const MAX_EXPORT_EDGE = 4096;
 export const MAX_EXPORT_AREA = 4096 * 4096;
 
@@ -81,10 +71,8 @@ export function outputSize(
 	return { w: Math.max(2, w), h: Math.max(2, h) };
 }
 
-/**
- * The frame's fill, or null for no frame. Shared by the live preview and the
- * export so the two cannot disagree about what the frame looks like.
- */
+/** The frame's fill, or null for no frame. Shared by the live preview and the
+ *  export so the two cannot disagree. */
 export function frameHexFor(
 	frame: FrameId,
 	accentHex: string,
@@ -102,27 +90,14 @@ export function frameHexFor(
 /** Fraction of the short edge used as frame padding. */
 export const framePad = (margin: number): number => (margin / 100) * 0.18;
 
-/**
- * How much deeper an instant print's foot is than its other three sides.
- *
- * A cheki's whole character is the wide band under the photo, which is where the
- * color code is written. Uniform padding with a caption underneath is just a
- * white border.
- */
+/** How much deeper an instant print's foot is than its other three sides. The
+ *  wide band under the photo is a cheki's whole character — uniform padding with
+ *  a caption underneath is just a border. */
 export const CHEKI_FOOT = 3.2;
 
-/**
- * The part of the photo a ratio keeps, in normalised photo units.
- *
- * A ratio crops rather than stretches. Scaling the quad to a different aspect
- * than the photo makes the shader map the whole texture onto it, so a 4:3 photo
- * exported at 1:1 came out visibly squashed. Cropping keeps every pixel's shape
- * and simply loses the edges, which is what a crop ratio is supposed to mean.
- *
- * The crop is the largest centred rect of the target aspect that fits, which is
- * the same rect `outputSize` computes — the two must agree, or the preview and
- * the file would show different framing.
- */
+/** The part of the photo a ratio keeps, in normalised photo units. Crops rather
+ *  than stretches — a stretched quad mapped the whole texture and squashed a 4:3
+ *  photo at 1:1. Same rect as `outputSize`, so preview and file agree. */
 export function cropRect(imgW: number, imgH: number, ratioId: string): CropRect {
 	const ratio = RATIOS.find((r) => r.id === ratioId);
 	const ar = ratio && ratio.w && ratio.h ? ratio.w / ratio.h : imgW / imgH;
@@ -163,20 +138,9 @@ export interface CeilingFit {
 	geo: Geometry;
 }
 
-/**
- * Shrink a composition until its canvas fits the browser ceiling.
- *
- * The clamp cannot be computed in one step from the pre-pad size: the frame band
- * is added *after* the photo box is chosen, so scaling the photo to exactly the
- * limit and then padding it lands back over the limit. At `max` quality with a
- * 50% margin on a 12MP photo that produced a 4097-pixel side — one pixel past
- * the ceiling, which is enough for `toBlob` to call back with `null` and the
- * export to fail with no other symptom.
- *
- * So the fit is solved iteratively: compose at the current scale, and if the
- * result is still over, divide the scale by the overshoot. Rounding means the
- * fixed point is not analytic, and each pass is exact, so a handful converge.
- */
+/** Shrink a composition until its canvas fits the browser ceiling. The clamp
+ *  cannot be one step — the band is added after the photo box — so scaling to the
+ *  limit then padding lands back over: a 4097px side, which made `toBlob` null. */
 export function composeWithinCeiling({
 	wanted,
 	frame,
@@ -207,9 +171,9 @@ export function composeWithinCeiling({
 	let innerH = wanted.h;
 	let geo = compose(innerW, innerH);
 
-	// Bounded rather than `while`: rounding could in principle oscillate around
-	// the limit, and an export that never returns is worse than one a pixel
-	// large. Eight passes is far more than convergence needs.
+	// Bounded rather than `while`: rounding could oscillate around the limit, and
+	// an export that never returns is worse than one a pixel large. Eight passes
+	// is far more than convergence needs.
 	for (let pass = 0; pass < 8; pass++) {
 		const over = Math.max(
 			geo.outW / MAX_EXPORT_EDGE,
@@ -230,28 +194,18 @@ export function composeWithinCeiling({
 export const overlayRowCount = (o: OverlaySpec): number =>
 	(o.showSwatch || o.showCode ? 1 : 0) + (o.showMix ? 1 : 0);
 
-/**
- * The smallest legible row height, as a fraction of the photo's short edge.
- *
- * Below this the color code stops being readable, so the band must not shrink
- * past it — that is what sets the margin's floor.
- */
+/** The smallest legible row height, as a fraction of the photo's short edge —
+ *  below it the color code is unreadable, which sets the margin's floor. */
 export const MIN_ROW_FRAC = 0.02;
 
 /** How much of the band the color-mix bar spans. Under 1 so the bar reads as a
- *  proportional chip rather than a full-bleed rule, and so the block has room to
- *  move when it is aligned away from the left. */
+ *  proportional chip, not a full-bleed rule, and the block can move when aligned
+ *  away from the left. */
 const MIX_BAR_FRAC = 0.62;
 
-/**
- * The margin below which the band could no longer hold a legible block.
- *
- * Scale-independent: both the band and the block scale off the photo's short
- * edge, so this is a plain percentage. Exposed so the margin slider can start
- * here instead of showing a dead zone — the band used to be floored at the
- * block's height, which made the slider inert across its whole travel because
- * the floor exceeded anything the slider could ask for.
- */
+/** The margin below which the band could no longer hold a legible block. Scale-
+ *  independent, so a plain percentage. Exposed so the slider starts here: the
+ *  band used to be floored at the block's height, which made the slider inert. */
 export const overlayMinMargin = (o: OverlaySpec): number =>
 	Math.ceil(overlayRowCount(o) * MIN_ROW_FRAC * 1.35 * (100 / 0.18));
 
@@ -274,16 +228,9 @@ type MetricsInput = OverlaySpec & {
 	hasFrame: boolean;
 };
 
-/**
- * Metrics for the swatch / code / mix block, in output units.
- *
- * Everything scales off the photo's short edge, so the same numbers lay out the
- * block at export resolution and at preview resolution.
- *
- * With a frame the block is fitted to the band rather than the band grown to fit
- * the block. The band is then always exactly the margin, which is what makes the
- * margin control honest.
- */
+/** Metrics for the swatch / code / mix block, in output units. Everything scales
+ *  off the photo's short edge, so export and preview lay out identically; with a
+ *  frame the block is fitted to the band, so the band is exactly the margin. */
 function overlayMetrics({
 	innerW,
 	innerH,
@@ -299,14 +246,13 @@ function overlayMetrics({
 	if (showSwatch) inlineParts.push('swatch');
 	if (showCode) inlineParts.push('code');
 	// The swatch and the color code share a line — they describe the same thing,
-	// and stacking them on separate rows made them read as unrelated. The color
-	// mix bar spans the width, so it keeps its own line.
+	// and stacking them made them read as unrelated. The mix bar spans the width,
+	// so it keeps its own line.
 	const rowCount = overlayRowCount({ showSwatch, showCode, showMix });
 	const natural = unit * 0.075;
-	// 1.35 leaves the band visibly framing the block rather than letting it fill
-	// the space edge to edge. The deepest band governs: an instant print's foot is
-	// where the block goes, so fitting to the shallower sides would shrink it for
-	// no reason.
+	// 1.35 leaves the band visibly framing the block rather than filling it edge
+	// to edge. The deepest band governs: an instant print's foot is where the
+	// block goes, so fitting the shallower sides would shrink it for no reason.
 	const band = Math.max(pad, padBottom);
 	const fitted = hasFrame && rowCount ? band / 1.35 / rowCount : natural;
 	const rowH = hasFrame && rowCount ? Math.min(natural, fitted) : natural;
@@ -321,8 +267,8 @@ function overlayMetrics({
 	};
 }
 
-/** Input to `composeGeometry`. The overlay toggles are optional: each has a
- *  default, and the tests rely on passing only the ones they vary. */
+/** Input to `composeGeometry`. The overlay toggles are optional because each has
+ *  a default and the tests pass only the ones they vary. */
 export interface ComposeInput extends Partial<OverlaySpec> {
 	imgW: number;
 	imgH: number;
@@ -333,14 +279,9 @@ export interface ComposeInput extends Partial<OverlaySpec> {
 	align?: Align;
 }
 
-/**
- * The whole composition's geometry: frame fill, band width, and output size.
- *
- * One function for the export and the preview. They previously each derived the
- * band from `framePad` and `blockH` inline, which let the preview disagree with
- * the saved file about how tall the band was — the preview showed one thing and
- * the file another.
- */
+/** The whole composition's geometry: frame fill, band width, and output size. One
+ *  function for export and preview — they previously derived the band inline
+ *  separately, which let the preview disagree with the saved file. */
 export function composeGeometry({
 	imgW,
 	imgH,
@@ -354,12 +295,11 @@ export function composeGeometry({
 	showMix = false
 }: ComposeInput): Geometry {
 	const hex = frameHexFor(frame, accentHex, customHex);
-	// The band is exactly the margin. It is deliberately not floored at the
-	// block's height: doing that made the margin slider inert for its whole
-	// travel, because the floor exceeded anything the slider could request.
+	// The band is exactly the margin, deliberately not floored at the block's
+	// height: doing that made the margin slider inert for its whole travel.
 	const pad = hex ? Math.round(framePad(margin) * Math.min(imgW, imgH)) : 0;
-	// One side may differ: an instant print's foot carries the color code, so it
-	// is deliberately deeper than the top and sides.
+	// An instant print's foot carries the color code, so it is deliberately
+	// deeper than the top and sides.
 	const padBottom = hex && frame === 'cheki' ? Math.round(pad * CHEKI_FOOT) : pad;
 
 	const outW = imgW + pad * 2;
@@ -379,9 +319,9 @@ export function composeGeometry({
 		showMix,
 		// Padding as a fraction of the framed width. The preview needs it because
 		// CSS percentage padding resolves against the containing block's width and
-		// would not match this box, so it scales the value to pixels itself.
+		// would not match this box.
 		padFrac: pad / outW,
-		// Against the height, not the width: the preview scales this one by the
+		// Against the height, not the width: the preview scales this by the
 		// composition's height to get the foot in pixels.
 		padBottomFrac: padBottom / outH
 	};
@@ -390,7 +330,7 @@ export function composeGeometry({
 export interface ExportInput extends OverlaySpec {
 	source: PixelSource & Size;
 	/** Partial by design: the renderer merges these over its defaults, and the
-	 *  crop is derived here from `ratio` rather than supplied by the caller. */
+	 *  crop is derived here from `ratio`. */
 	params: RenderParamsInput;
 	maskSpec: MaskSpec;
 	frame?: FrameId;
@@ -428,9 +368,8 @@ export async function exportComposite({
 	const accent = rgbToHex(params.target ?? { r: 252, g: 192, b: 0 });
 	const wanted = outputSize(source.width, source.height, ratio, quality);
 	// Fit the composition to the canvas ceiling before anything is allocated.
-	// Asking for more than a browser's largest canvas is not an error it reports:
-	// the 2D context goes blank and `toBlob` hands back `null`, which surfaced as
-	// the same generic failure on every platform at `max` quality with a frame.
+	// Exceeding a browser's largest canvas is not an error it reports: the 2D
+	// context goes blank and `toBlob` hands back `null`.
 	const { innerW, innerH, geo } = composeWithinCeiling({
 		wanted,
 		frame,
@@ -455,13 +394,9 @@ export async function exportComposite({
 		ctx.fillRect(0, 0, geo.outW, geo.outH);
 	}
 
-	// Render the photo at output resolution on a throwaway GL context.
-	//
-	// The canvas is the *cropped* size and the shader applies the crop, so the
-	// photo arrives already framed at the target ratio instead of being stretched
-	// to it. The mask layer stays full-image: the shader samples it through the
-	// same UV rect as the image, so a region still lines up with the pixels it was
-	// drawn over.
+	// Render the photo at output resolution on a throwaway GL context. The canvas
+	// is the cropped size and the shader applies the crop, so the photo arrives
+	// framed, not stretched; the mask stays full-image and samples the same UV rect.
 	const glCanvas = document.createElement('canvas');
 	glCanvas.width = innerW;
 	glCanvas.height = innerH;
@@ -475,12 +410,9 @@ export async function exportComposite({
 	r.render();
 	ctx.drawImage(glCanvas, geo.pad, geo.pad);
 	r.dispose();
-	// Drop the GL canvas's backing store now that its pixels are composited.
-	// `dispose` frees the driver objects, but the canvas still holds a
-	// photo-sized buffer, and the PNG encode below is the moment the tab is
-	// closest to its memory ceiling — mobile browsers fail the encode there
-	// rather than anywhere the caller can see. Shrinking to 1x1 releases it
-	// immediately instead of waiting for the GC.
+	// Release the GL canvas's backing store: `dispose` frees the driver objects but
+	// not the photo-sized buffer, and the PNG encode below is where the tab is
+	// closest to its memory ceiling.
 	glCanvas.width = 1;
 	glCanvas.height = 1;
 
@@ -521,14 +453,9 @@ export interface OverlayBlockInput extends OverlaySpec {
 	palette?: Rgb[] | null;
 }
 
-/**
- * Paint the swatch / code / mix block.
- *
- * Shared by the export and the on-screen preview, which is the point: the
- * preview used to show the frame and nothing else, so the overlays only appeared
- * after saving. Both callers pass the same output-unit geometry; the preview
- * scales the context rather than the numbers.
- */
+/** Paint the swatch / code / mix block, shared by the export and the preview —
+ *  which used to show the frame only, so overlays appeared only after saving.
+ *  Both pass output-unit geometry; the preview scales the context. */
 export function drawOverlayBlock(
 	ctx: CanvasRenderingContext2D,
 	{
@@ -563,9 +490,8 @@ export function drawOverlayBlock(
 	const text = ink ?? '#F6F6F8';
 	const frac = ALIGNMENTS[align];
 
-	// Where the block sits:
-	//   framed   -> in the band below the photo, never over the image
-	//   frameless -> on the photo, so it needs a scrim to stay readable
+	// Where the block sits: in the band below the photo when framed; on the photo
+	// when not, which needs a scrim to stay readable.
 	const blockTop = hasFrame
 		? innerH + pad + (padBottom - blockH) / 2
 		: photoInset(height, blockH, unit);
@@ -613,8 +539,7 @@ export function drawOverlayBlock(
 		}
 
 		if (showCode) {
-			// Gap only when the swatch is actually present, so a lone code
-			// still starts at the inset rather than floating.
+			// Gap only when the swatch is present, so a lone code starts at the inset.
 			if (showSwatch) x += rowH * 0.42;
 			ctx.fillStyle = text;
 			ctx.font = `600 ${Math.round(rowH * 0.5)}px ui-monospace, "SF Mono", Menlo, monospace`;
@@ -696,7 +621,7 @@ export async function shareBlob(
 		} catch (err) {
 			if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
 			// Any other failure (a share target that refuses the file, a permission
-			// error) falls back to a plain download rather than losing the export.
+			// error) falls back to a download rather than losing the export.
 		}
 	}
 	downloadBlob(blob, filename);

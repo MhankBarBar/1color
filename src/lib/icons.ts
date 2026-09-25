@@ -1,13 +1,9 @@
-// Inline icon set. Small stroke icons at 24px, matching the app's control row:
-// a half-filled circle for Accent, a reticle for Range, a contrast disc for
-// Monochrome.
+// Inline icon set: 24px stroke icons matching the app's control row.
 //
-// Every icon carries explicit width/height as well as a viewBox. A `viewBox`
-// alone gives an SVG no intrinsic size, so inside a grid or flex item the used
-// size comes from the layout — and WebKit resolves `max-width: 100%` on such an
-// element to zero, collapsing the icon entirely. That is why the Save, Share,
-// and Compare buttons rendered as empty circles on Safari and Chrome on iOS
-// while the icons that happened to have a CSS width were fine.
+// Every icon carries explicit width/height as well as a viewBox: a viewBox alone
+// gives an SVG no intrinsic size, and WebKit resolves `max-width: 100%` on such an
+// element to zero, collapsing it — which made Save, Share, and Compare render as
+// empty circles on iOS Safari and Chrome.
 const ICON_PX = 24;
 
 const S = (body: string, extra = ''): string =>

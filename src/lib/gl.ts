@@ -1,15 +1,10 @@
-// GPU renderer for the selective-color pass. One fragment shader does the whole
-// job: hue distance -> keep mask, mask layer, monochrome curve, tone/contrast,
-// then blends the original color back through the keep value.
+// GPU renderer for the selective-color pass: the fragment shader does hue
+// distance -> keep mask, mask layer, monochrome curve, tone/contrast, then
+// blends the original color back through the keep value.
 //
-// Runs on WebGL2 where available and falls back to WebGL1 otherwise. Requiring
-// WebGL2 refused to start at all on devices where it is missing — notably Chrome
-// on Android, which blocklists it on a number of Adreno/Mali drivers and drops
-// it under GPU memory pressure.
-//
-// The math here must stay in lockstep with color.js — that module is the CPU
-// copy used for the coverage readout, so a divergence shows up as the readout
-// disagreeing with the pixels.
+// WebGL2 with a WebGL1 fallback; requiring WebGL2 refused to start where it is
+// missing (Chrome on Android blocklists it on several Adreno/Mali drivers).
+// Math stays in lockstep with color.js, the CPU copy behind the coverage readout.
 
 import { VERT_300, FRAG_300, VERT_100, FRAG_100, UNIFORMS } from './shaders.js';
 import type { UniformName } from './shaders.js';
@@ -18,7 +13,7 @@ import type { RenderParams, RenderParamsInput, TextureSource } from './types.js'
 export { UNIFORMS, SHADERS } from './shaders.js';
 
 /** Both context flavours the renderer may hold. Exported so the test double can
- *  be typed against the same union the renderer uses. */
+ *  be typed against the same union. */
 export type GL = WebGLRenderingContext | WebGL2RenderingContext;
 
 function compile(gl: GL, type: number, src: string): WebGLShader {
@@ -54,9 +49,8 @@ const DEFAULTS: RenderParams = {
 	preset: 0,
 	maskOn: 0,
 	bypass: 0,
-	// The kept rect of the photo, in normalised units — the shape `cropRect` in
-	// export.ts returns. The identity is the whole photo, which is what `original`
-	// means.
+	// The kept rect, in normalised units, in the shape `cropRect` (export.ts)
+	// returns; the identity is the whole photo, i.e. `original`.
 	crop: { sx: 0, sy: 0, sw: 1, sh: 1 }
 };
 
@@ -88,11 +82,9 @@ export class Renderer {
 	constructor(canvas: RendererCanvas) {
 		this.canvas = canvas;
 
-		// `preserveDrawingBuffer` must stay true. With it false the drawing buffer
-		// is only valid inside the frame you drew it: any later recomposite
-		// (scroll, resize, layout settle, tab switch) presents an empty buffer,
-		// which reads as the photo area going black. The stage paints on demand
-		// rather than in a loop, so preserving the buffer keeps the image on screen.
+		// `preserveDrawingBuffer` must stay true: false leaves the buffer valid only
+		// inside the drawing frame, so any later recomposite (scroll, resize, tab
+		// switch) presents an empty buffer — the photo area goes black.
 		const opts: WebGLContextAttributes = {
 			antialias: false,
 			alpha: true,
@@ -102,8 +94,7 @@ export class Renderer {
 			powerPreference: 'high-performance'
 		};
 
-		// WebGL2 first, then WebGL1. Both are fine: the shader math is identical,
-		// only the dialect differs.
+		// WebGL2 first, then WebGL1: identical shader math, different dialect.
 		let gl: GL | null = null;
 		let isGL2 = false;
 		try {
@@ -136,8 +127,8 @@ export class Renderer {
 		if (!prog) throw new Error('Could not create shader program.');
 		gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, vert));
 		gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, frag));
-		// WebGL2 needs the attribute bound before linking; WebGL1 assigns it during
-		// linking. Binding on GL1 is harmless, so do it unconditionally.
+		// WebGL2 needs the attribute bound before linking; WebGL1 assigns it while
+		// linking. Harmless on GL1, so bind unconditionally.
 		gl.bindAttribLocation(prog, 0, 'aPos');
 		gl.linkProgram(prog);
 		if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
@@ -155,10 +146,9 @@ export class Renderer {
 			gl.vertexAttribPointer(this.attribLoc, 2, gl.FLOAT, false, 0, 0);
 		}
 
-		// Built from UNIFORMS so a uniform added to the shader and forgotten here is
-		// a compile error rather than a silently missing lookup. `Object.fromEntries`
-		// widens the key to `string`, so the record type is asserted back on — the
-		// keys are exactly UNIFORMS by construction.
+		// Built from UNIFORMS so a uniform forgotten here is a compile error, not a
+		// silently missing lookup. `Object.fromEntries` widens the key to `string`,
+		// hence the assertion back to the record type.
 		this.u = Object.fromEntries(
 			UNIFORMS.map((name) => [name, gl.getUniformLocation(prog, name)])
 		) as Record<UniformName, WebGLUniformLocation | null>;
@@ -183,30 +173,17 @@ export class Renderer {
 		this._src = source;
 	}
 
-	/**
-	 * Upload a still and draw it.
-	 *
-	 * Skips the upload when this exact source is already resident. A still can be
-	 * several tens of megabytes as a texture, and without this guard every
-	 * repaint — and every consumer sharing a renderer — re-uploaded the whole
-	 * thing. That is what made re-importing a photo stall.
-	 *
-	 * The live camera path calls `upload` directly, since a video element is
-	 * always new pixels and must never be skipped.
-	 */
+	/** Upload a still and draw it, skipping the upload when this exact source is
+	 *  resident: a still can be tens of megabytes as a texture, so every repaint
+	 *  re-uploaded it and re-import stalled. Camera frames call `upload` directly. */
 	setImage(source: TextureSource): void {
 		if (this._src !== source || !this.hasImage) this.upload(source);
 		this.render();
 	}
 
-	/**
-	 * Uploads the mask texture, unconditionally.
-	 *
-	 * The deduplication lives at the call site, not here: `Stage` only calls this
-	 * when the mask will actually be read. An unconditional upload moves roughly
-	 * 6 MB per pointer event, which is why the caller checks first — a doc here
-	 * claiming this method skips unchanged uploads is wrong and will mislead.
-	 */
+	/** Uploads the mask texture, unconditionally — dedup lives at the call site:
+	 *  `Stage` only calls this when the mask will be read, since an unconditional
+	 *  upload moves ~6 MB per pointer event. Do not document it as skipping. */
 	setMask(source: TextureSource): void {
 		const gl = this.gl;
 		gl.activeTexture(gl.TEXTURE1);
@@ -256,10 +233,9 @@ export class Renderer {
 		gl.uniform1i(u.uPreset, params.preset | 0);
 		gl.uniform1f(u.uMaskOn, params.maskOn ? 1 : 0);
 		gl.uniform1f(u.uBypass, params.bypass ? 1 : 0);
-		// `crop` uses the same field names `cropRect` returns. Passing undefined here
-		// does not throw — it uploads NaN, the uv becomes NaN, every texture sample
-		// misses, and the whole photo renders as one flat color with no error
-		// anywhere. That is exactly how it failed once.
+		// `crop` uses the same field names `cropRect` returns. Passing undefined
+		// uploads NaN, which makes every texture sample miss and renders the photo
+		// as one flat color, with no error anywhere. That is how it failed once.
 		const cr = params.crop;
 		gl.uniform4f(u.uCrop, cr.sx, cr.sy, cr.sw, cr.sh);
 
@@ -271,29 +247,16 @@ export class Renderer {
 		gl.deleteTexture(this.imageTex);
 		gl.deleteTexture(this.maskTex);
 		gl.deleteProgram(this.prog);
-		// Hand the context back. Deleting the objects above frees the driver
-		// memory they hold, but the context itself stays live and still counts
-		// against the browser's limit until it is explicitly lost — Chrome on
-		// Android allows far fewer live contexts than desktop, so a stage torn
-		// down and rebuilt a few times could leave the next context creation
-		// failing outright. The extension is optional; where it is missing the
-		// context is simply left to the GC, which is the old behaviour.
+		// Hand the context back: the deletes above free driver memory, but the
+		// context stays live and counts against the browser's limit until lost, and
+		// Chrome on Android allows far fewer than desktop. Optional extension.
 		gl.getExtension('WEBGL_lose_context')?.loseContext();
 	}
 }
 
-/**
- * One shared offscreen renderer for all thumbnails.
- *
- * Each thumbnail tile used to own a WebGL context. Browsers cap live contexts
- * (Chrome evicts the oldest past ~16), and every context carries real driver
- * memory, so four tiles for one photo was wasteful. They are also static — they
- * only change when the photo or the sampled accent changes — so there is no
- * reason to keep a GPU pipeline warm for them.
- *
- * This renders into a reused canvas and hands back a snapshot the caller can
- * paint once with `drawImage`. Sequential use only, which is how it is called.
- */
+/** One shared offscreen renderer for all thumbnails: browsers cap live WebGL
+ *  contexts (Chrome evicts the oldest past ~16) and each carries driver memory,
+ *  while tiles are static. Returns a snapshot to paint once with `drawImage`. */
 let thumb: { canvas: HTMLCanvasElement; renderer: Renderer } | null = null;
 
 export function renderThumbnail(
@@ -313,8 +276,7 @@ export function renderThumbnail(
 		canvas.width = cw;
 		canvas.height = ch;
 	}
-	// setImage deduplicates the upload when this source is already resident, so
-	// four tiles for one photo upload it once rather than four times.
+	// setImage deduplicates the upload, so four tiles for one photo upload once.
 	renderer.setImage(source);
 	renderer.setParams({ ...params, maskOn: 0 });
 	renderer.resize(cw, ch, 1);

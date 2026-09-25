@@ -1,10 +1,7 @@
 // The mask layer: a white-on-black canvas the shader multiplies into the keep
-// value. White keeps color, black forces monochrome, and the shader's
-// smoothstep on the sampled value supplies the soft edge — so this layer can
-// stay low resolution without looking soft.
-//
-// All geometry is stored in normalised image coordinates (0..1, y down) so it
-// survives canvas resizes and export at a different resolution.
+// value. White keeps color, black forces monochrome, and the shader's smoothstep
+// supplies the soft edge, so this layer can stay low resolution. Geometry is
+// normalised (0..1, y down) so it survives resize and export.
 
 import type { MaskSpec, Point, Shape, ShapeKind, Stroke } from './types.js';
 
@@ -23,9 +20,8 @@ export class MaskLayer {
 		this.canvas = document.createElement('canvas');
 		this.canvas.width = this.w;
 		this.canvas.height = this.h;
-		// A canvas we just created always has a 2D context: `getContext` returns
-		// null only for a context id the element does not support, and '2d' is
-		// never that.
+		// A freshly created canvas always yields a 2D context: `getContext` returns
+		// null only for an unsupported context id, and '2d' never is.
 		this.ctx = this.canvas.getContext('2d', { willReadFrequently: false })!;
 		this.clear();
 	}
@@ -115,22 +111,18 @@ export const SHAPE_MIN = 0.04;
 
 export function makeShape(kind: ShapeKind, cx = 0.5, cy = 0.5): Shape {
 	const s = kind === 'rect' ? 0.34 : 0.3;
-	// The parameter stays the full tool union so a caller can hand over the active
-	// tool; `shapeForTool` is what guards the point-based kinds out.
+	// The parameter stays the full tool union so a caller can pass the active tool;
+	// `shapeForTool` guards the point-based kinds out.
 	return { kind: kind as Shape['kind'], cx, cy, w: s, h: s, rot: 0 };
 }
 
 /** Tools that are drawn as a parametric shape rather than a raster mask. */
 export const SHAPE_TOOLS: readonly ShapeKind[] = ['circle', 'rect'];
 
-/**
- * The starting shape for a tool, or null for tools that do not use one.
- *
- * `lasso` and `brush` build a raster mask from points, so they must have no
- * shape at all. Returning a shape for them is not harmless: the overlay renders
- * any non-rect shape as an ellipse, so a stray shape makes the lasso tool draw a
- * circle over the photo. Centralised here so every caller gets the same answer.
- */
+/** The starting shape for a tool, or null for tools that do not use one.
+ *  `lasso` and `brush` build a raster mask from points and must have no shape:
+ *  the overlay renders any non-rect shape as an ellipse, so a stray shape makes
+ *  the lasso tool draw a circle over the photo. */
 export function shapeForTool(kind: ShapeKind): Shape | null {
 	return SHAPE_TOOLS.includes(kind) ? makeShape(kind, 0.5, 0.5) : null;
 }

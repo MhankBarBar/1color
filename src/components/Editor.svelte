@@ -1,13 +1,7 @@
 <script lang="ts">
-	/**
-	 * The editor, laid out the way the iOS app is: the photo is the hero, a
-	 * compact panel sits directly beneath it, and the mode switcher is a row of
-	 * circular buttons at the bottom — the app's own navigation idiom.
-	 *
-	 * Only the active mode's controls are rendered. Showing every control at once
-	 * is what produced a tall scrolling column where the important things (the
-	 * photo, Save) scrolled out of view.
-	 */
+	/** The editor: photo as hero, a compact panel beneath it, circular mode buttons at
+	 *  the bottom. Only the active mode's controls render — showing them all pushed the
+	 *  photo and Save out of view. */
 	import Stage from './Stage.svelte';
 	import { tick } from 'svelte';
 	import { icon } from '../lib/icons.js';
@@ -61,13 +55,8 @@
 	let strokes = $state<Stroke[]>([]);
 	let brushSize = $state(0.08);
 
-	/**
-	 * Whether the brush size slider is being dragged.
-	 *
-	 * Drives the ring on the photo, so the size is shown while it is being chosen
-	 * instead of only under the pointer. Cleared on release, and on a short timer so
-	 * a keyboard user sees it too.
-	 */
+	/** Whether the brush size slider is being dragged: drives the ring on the photo so
+	 *  the size shows while it is chosen, and on a short timer so keyboard users see it. */
 	let brushHint = $state(false);
 	let brushHintTimer = 0;
 
@@ -99,8 +88,8 @@
 	let quality = $state<QualityId>('std');
 	let align = $state<Align>('left');
 	let showSwatch = $state(false);
-	// Off by default. It used to start on, which meant every export carried a hex
-	// string nobody asked for — an overlay is a choice, not a default.
+	// Off by default: it used to start on, so every export carried a hex string nobody
+	// asked for. An overlay is a choice, not a default.
 	let showCode = $state(false);
 	let showMix = $state(false);
 
@@ -112,14 +101,8 @@
 	/** Before/after split view over the photo. */
 	let compare = $state(false);
 
-	/**
-	 * Whether this browser can actually share a file.
-	 *
-	 * Detected rather than assumed: on desktop browsers `navigator.share` does
-	 * not accept files, so the Share button fell back to downloading — leaving
-	 * two buttons that did exactly the same thing. It is only shown where it
-	 * does something different from Save.
-	 */
+	/** Whether this browser can actually share a file. Detected, not assumed: desktop
+	 *  `navigator.share` rejects files, leaving Share identical to Save. */
 	let canShare = $state(false);
 
 	$effect(() => {
@@ -187,21 +170,16 @@
 	const palette = $derived(sampler ? sampler.palette : []);
 	const ratioList = $derived([{ id: 'original' }, ...RATIOS.slice(1)]);
 
-	/**
-	 * Lowest margin that still leaves the overlay block legible.
-	 *
-	 * Below this the band would be too short for the code to be readable, so the
-	 * slider starts here rather than offering a range that does nothing. The band
-	 * used to be floored at the block's height instead, which made the whole slider
-	 * inert — the floor was larger than anything the slider could request.
-	 */
+	/** Lowest margin that still leaves the overlay block legible. The band used to be
+	 *  floored at the block's height instead — larger than anything the slider could
+	 *  request, which made the whole slider inert. */
 	const minMargin = $derived(
 		frame === 'none' ? 0 : overlayMinMargin({ showSwatch, showCode, showMix })
 	);
 
-	// Keep the band legible when the overlays change under an already-low margin.
-	// Only when there is a frame: without one the margin does nothing, and moving
-	// the slider would look like a glitch.
+	// Keep the band legible when the overlays change under an already-low margin. Only
+	// with a frame: without one the margin does nothing, so moving the slider would look
+	// like a glitch.
 	$effect(() => {
 		const floor = minMargin;
 		if (margin < floor) margin = floor;
@@ -213,15 +191,9 @@
 		onaccent({ hex, coverage });
 	});
 
-	/**
-	 * Seed the edit when a photo arrives.
-	 *
-	 * Guarded by sampler identity rather than running on every dependency change.
-	 * It previously read `shapeKind`, so merely switching tool re-ran it — which
-	 * rebuilt a shape for the new tool (making the lasso draw a circle, since the
-	 * overlay renders any non-rect shape as an ellipse) and discarded the region
-	 * you had just drawn.
-	 */
+	/** Seed the edit when a photo arrives, guarded by sampler identity. Reading
+	 *  `shapeKind` re-ran it on every tool switch, rebuilding a shape for the new tool (a
+	 *  circle for the lasso, since the overlay draws non-rect shapes as ellipses). */
 	let seededFor: Sampler | null = null;
 	$effect(() => {
 		const s = sampler;
@@ -234,14 +206,12 @@
 		recent = [];
 	});
 
-	// Keep the shape's kind in step with the tool, but only for the two tools that
-	// have one. Without the guard this would resurrect a shape for lasso/brush,
-	// which the overlay renders as an ellipse.
+	// Keep the shape's kind in step with the tool, only for the two tools that have one.
+	// Without the guard this would resurrect a shape for lasso/brush, which the overlay
+	// renders as an ellipse.
 	$effect(() => {
 		if (!shape || !SHAPE_TOOLS.includes(shapeKind)) return;
-		// `SHAPE_TOOLS` holds only the two parametric tools, so this narrowing is
-		// real: lasso and brush never reach here, and a `Shape` can only be one of
-		// these two kinds.
+		// SHAPE_TOOLS holds only the two parametric tools, so this narrowing is real.
 		if (shapeKind !== 'circle' && shapeKind !== 'rect') return;
 		if ((shapeKind === 'rect') !== (shape.kind === 'rect')) shape = { ...shape, kind: shapeKind };
 	});
@@ -357,10 +327,8 @@
 	<div class="editor__bar">
 		<span class="editor__swatch" style:background={hex} aria-hidden="true"></span>
 		<span class="editor__hex">{hex}</span>
-		<!-- The gesture instruction belongs beside the surface it describes. It sat
-		     in the hero copy, four rows away from the photo, where it was the
-		     faintest text on the page — an instruction for a canvas the reader had
-		     not reached yet. -->
+		<!-- The gesture instruction belongs beside the surface it describes. In the hero
+		     copy it sat four rows from the photo as the faintest text on the page. -->
 		<span class="editor__hint">
 			<span class="editor__hint-icon" aria-hidden="true">{@html icon('hand')}</span>
 			{t('stage.hint')}
@@ -432,8 +400,6 @@
 		/>
 	</div>
 
-	<!-- One panel, showing only the active mode's controls. -->
-
 	{#if toast}
 		<p class="toast" role="status">{toast}</p>
 	{/if}
@@ -445,10 +411,9 @@
 				class:is-on={mode === m.id}
 				aria-expanded={mode === m.id ? panelOpen : undefined}
 				onclick={(e) => {
-					// One job: switch mode, and make sure the controls are showing.
-					// Folding is the grip's job below, so this control cannot be the
-					// only way back — which is exactly what it was, and closing the
-					// panel then left no visible affordance to reopen it.
+					// Switching mode must also show the controls: folding is the grip's
+					// job, and when this was the only way back, closing the panel left no
+					// visible affordance to reopen it.
 					const row = e.currentTarget.parentElement;
 					const before = row ? row.getBoundingClientRect().top : 0;
 					mode = m.id;
@@ -468,14 +433,9 @@
 	</div>
 
 	<!--
-		The fold handle, and the panel's only visible affordance.
-
-		It deliberately sits outside the panel's `{#if}`. Inside it, closing the
-		panel removed the very control that reopens it, so the only way back was to
-		guess that the mode row doubles as a toggle — which nobody guesses.
-
-		A grab bar rather than a title bar: the mode row directly above already
-		names the active mode, so a header here said "Color" twice in one card.
+		The fold handle. It sits outside the panel's `{#if}` deliberately: inside it,
+		closing the panel removed the control that reopens it. A grab bar, not a title
+		bar — the mode row above already names the active mode.
 	-->
 	<button
 		class="panel__grip"
@@ -536,9 +496,8 @@
 						<input type="range" min="0" max="100" bind:value={feather} />
 					</label>
 
-					<!-- The share of the photo keeping its color, next to the two
-					     controls that set it. In the top bar it was an unlabelled
-					     number with nothing to explain it. -->
+					<!-- Coverage, next to the two controls that set it. In the top bar it
+					     was an unlabelled number. -->
 					<p class="panel__readout">
 						<span>{t('editor.coverage')}</span>
 						<span class="mono">{(coverage * 100).toFixed(0)}%</span>
@@ -638,9 +597,9 @@
 								<span>{t('out.margin')}</span>
 								<span class="mono">{margin}</span>
 							</span>
-							<!-- The floor keeps the band tall enough to hold the overlay
-							     block; below it the slider would move and nothing would
-							     change, which reads as a broken control. -->
+							<!-- min={minMargin} keeps the band tall enough for the overlay
+							     block; below the floor the slider would move and nothing
+							     would change. -->
 							<input type="range" min={minMargin} max="100" bind:value={margin} />
 						</label>
 					{/if}
@@ -706,10 +665,8 @@
 	/* Icon-only button with an accessible name; matches the app's round controls. */
 	.iconbtn {
 		/* From the shared variable so the touch breakpoint in app.css can grow it.
-		   `padding: 0` and `flex: none` are load-bearing: the global `button` reset
-		   sets no padding, so the browser default widened the box past its height
-		   and the circle became an oval, and without `flex: none` the flex row in
-		   the bar could shrink it. */
+		   `padding: 0` and `flex: none` are load-bearing: browser default padding made
+		   the circle an oval, and the flex row could shrink it. */
 		width: var(--iconbtn-size);
 		height: var(--iconbtn-size);
 		flex: none;

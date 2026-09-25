@@ -1,10 +1,7 @@
 <script lang="ts">
-	/**
-	 * The stage: GL canvas plus an SVG overlay for range editing.
-	 *
-	 * Geometry lives in normalised image coordinates (0..1, y down), so the same
-	 * shape drives the on-screen preview and the full-resolution export.
-	 */
+	/** The stage: GL canvas plus an SVG overlay for range editing. Geometry lives in
+	 *  normalised image coordinates (0..1, y down), so one shape drives both the preview
+	 *  and the full-resolution export. */
 	import { Renderer } from '../lib/gl.js';
 	import { MaskLayer, shapeHitTest, makeShape, SHAPE_MIN } from '../lib/mask.js';
 	import { rgbToHex, hexToRgb, inkOn } from '../lib/color.js';
@@ -100,9 +97,9 @@
 	let boxEl = $state<HTMLDivElement | null>(null);
 	/** Overlay preview canvas, covering the photo box and the frame band. */
 	let composeEl = $state<HTMLCanvasElement | null>(null);
-	// $state, not a plain binding: every effect below depends on the renderer
-	// existing, and a plain variable would not re-trigger them once it is
-	// assigned. That bug shows up as a permanently blank canvas.
+	// $state, not a plain binding: every effect below depends on the renderer existing,
+	// and a plain variable would not re-trigger them once assigned. That bug shows up as
+	// a permanently blank canvas.
 	let renderer = $state<Renderer | null>(null);
 	let mask = $state<MaskLayer | null>(null);
 	/** The source the current mask was built for; identity, not size. */
@@ -115,13 +112,9 @@
 	let beforeEl = $state<HTMLCanvasElement | null>(null);
 	let draggingSplit = $state(false);
 
-	// The "before" layer is a one-off 2D snapshot of the untouched source, clipped
-	// to the left of the divider. Reusing the GL canvas for it would mean a second
-	// WebGL context and a second render per frame; a snapshot costs one drawImage
-	// per photo and is exactly the original pixels.
-	//
-	// It draws the cropped rect, so the comparison is framed exactly like the
-	// result next to it rather than showing the whole original.
+	// The "before" layer is a one-off 2D snapshot of the untouched source, clipped to the
+	// divider. Reusing the GL canvas would mean a second WebGL context and a second render
+	// per frame. It draws the cropped rect, so both sides are framed alike.
 	$effect(() => {
 		if (!beforeEl || !source) return;
 		const w = Math.round(fit.w);
@@ -153,22 +146,16 @@
 		const r = boxEl.getBoundingClientRect();
 		split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
 	}
-	// Aspect ratio of the photo as the stage shows it: cropped to the chosen
-	// ratio, so switching ratio reframes the photo on screen exactly as it will be
-	// exported.
+	// Cropped to the chosen ratio, so switching ratio reframes the photo on screen
+	// exactly as it will be exported.
 	const crop = $derived(source ? cropRect(source.width, source.height, ratio) : { sx: 0, sy: 0, sw: 1, sh: 1 });
 	const aspect = $derived(
 		source ? (source.width * crop.sw) / (source.height * crop.sh) : 1
 	);
 
-	/**
-	 * Map a point in view space (0..1 across the cropped photo) to full-image
-	 * space (0..1 across the original).
-	 *
-	 * Region geometry is stored in image space, so a region keeps sitting on the
-	 * same part of the photo when the ratio changes. Only this mapping moves, which
-	 * is what makes the crop reversible in the UI.
-	 */
+	/** Map a point in view space (0..1 across the cropped photo) to full-image space
+	 *  (0..1 across the original). Region geometry is stored in image space, so a region
+	 *  stays on the same part of the photo as the ratio changes — only this mapping moves. */
 	const viewToImage = (p: Point): Point => ({
 		x: crop.sx + p.x * crop.sw,
 		y: crop.sy + p.y * crop.sh
@@ -200,12 +187,8 @@
 	});
 
 	// --- render scheduling -------------------------------------------------
-	//
-	// Everything funnels through one animation frame. Previously three separate
-	// effects each called resize() + render(), and a brush drag triggered a
-	// repaint per pointermove — so a single drag could push dozens of full
-	// redraws plus a multi-megabyte mask upload per event. Coalescing means at
-	// most one frame of work per repaint, and pointermove never outpaces it.
+	// One frame for everything: three effects used to call resize() + render(), and a
+	// brush drag repainted per pointermove — dozens of redraws plus a mask upload per drag.
 
 	let pendingFrame = 0;
 
@@ -217,14 +200,9 @@
 		});
 	}
 
-	/**
-	 * Repaint the mask layer.
-	 *
-	 * Strokes only ever grow by appending, so when the change is one more point
-	 * on the last stroke, only that segment is drawn. A full `drawAll` clears the
-	 * layer and replays every point — during a drag that was the dominant cost,
-	 * growing with the length of the stroke.
-	 */
+	/** Repaint the mask layer. Strokes only grow by appending, so a change adding one
+	 *  point to the last stroke draws just that segment; a full `drawAll` clears the layer
+	 *  and replays every point, which dominated a drag. */
 	let maskState: { strokes: number; pts: number; shape: Shape | null | undefined; lasso: number } = {
 		strokes: -1,
 		pts: -1,
@@ -260,9 +238,8 @@
 		if (!w || !h) return;
 		r.resize(w, h);
 
-		// The mask is only uploaded when the shader will actually read it. In the
-		// default whole-photo mode it is skipped entirely, which is the common case
-		// and the bulk of the upload cost.
+		// Uploaded only when the shader will read it; the default whole-photo mode skips
+		// it entirely, and that is the bulk of the upload cost.
 		if (params.maskOn) {
 			if (maskFor !== source) {
 				mask = new MaskLayer(source.width, source.height);
@@ -296,12 +273,9 @@
 		schedule();
 	});
 
-	// Track the available width for the stage.
-	//
-	// Height comes from the viewport, NOT from the host element: the host's height
-	// is itself determined by the frame we are about to size, so reading it would
-	// be circular and collapse the stage to nothing. The page scrolls, and this
-	// cap just stops a tall portrait photo from filling the whole screen.
+	// Height comes from the viewport, NOT the host element: the host's height is
+	// determined by the frame we are about to size, so reading it is circular and
+	// collapses the stage. The cap stops a tall portrait filling the screen.
 	let hostEl = $state<HTMLDivElement | null>(null);
 	let avail = $state({ w: 0, h: 0 });
 
@@ -336,13 +310,9 @@
 		return { w: Math.round(w), h: Math.round(h) };
 	});
 
-	// Frame preview. The geometry comes from the export's own `composeGeometry`,
-	// so the band the preview draws into is by construction the band the export
-	// writes into. Deriving it here by hand is what let the two drift.
-	//
-	// The size passed in is the *cropped* photo, matching what `outputSize` returns
-	// for the export — otherwise the preview and the file would disagree the moment
-	// a ratio was chosen.
+	// Frame preview, from the export's own `composeGeometry`, so the band drawn into is by
+	// construction the band the export writes into. The size passed in is the *cropped*
+	// photo, matching `outputSize`, or preview and file disagree once a ratio is chosen.
 	const framed = $derived.by(() =>
 		composeGeometry({
 			imgW: Math.max(2, Math.round((source?.width || 1) * crop.sw)),
@@ -388,43 +358,29 @@
 
 	let drag = $state<Drag | null>(null);
 
-	// Overlay geometry in PIXELS, not normalised units.
-	//
-	// The overlay used to be an SVG with viewBox="0 0 1 1" and
-	// preserveAspectRatio="none", so a stroke-width of 0.02 scaled differently
-	// on x and y — brush strokes came out elliptical instead of round. Emitting
-	// pixel coordinates with a 1:1 viewBox makes stroke widths uniform.
-	//
-	// Declared here, above the first reader, because `const` bindings are in the
-	// temporal dead zone until their declaration runs — `$derived` defers the
-	// expression, but the binding itself must already be initialised when a later
-	// derivation reads it.
+	// Overlay geometry in PIXELS with a 1:1 viewBox. As an SVG with viewBox="0 0 1 1" and
+	// preserveAspectRatio="none", a stroke-width of 0.02 scaled differently on x and y,
+	// so brush strokes came out elliptical instead of round.
+
+	// Declared above its first reader: `const` is in the temporal dead zone until it
+	// runs, and `$derived` only defers the expression.
 	const px = $derived({
 		w: fit.w || 1,
 		h: fit.h || 1
 	});
 
-	/**
-	 * Live pointer position, in normalised image coordinates.
-	 *
-	 * Drives two overlays the iOS app has and this was missing: a ring showing
-	 * the actual brush size before you commit to a stroke, and a loupe so you can
-	 * see what you are sampling on a small screen.
-	 */
+	/** Live pointer position in normalised image coordinates. Drives the two overlays
+	 *  the iOS app has and this lacked: a ring showing the brush size before you commit
+	 *  to a stroke, and a loupe for sampling on a small screen. */
 	let pointer = $state<Point | null>(null);
 	let loupeEl = $state<HTMLCanvasElement | null>(null);
 
 	/** `pointer`, expressed in view space, for anything positioned with CSS. */
 	const pointerView = $derived(pointer ? imageToView(pointer) : null);
 
-	/**
-	 * Brush diameter in stage pixels, matching how the mask draws it.
-	 *
-	 * The mask is built at the full image's resolution, so a stroke keeps the same
-	 * size relative to the photo when a ratio crops it. The ring must convert back
-	 * through the crop, or it would show the wrong size as soon as a ratio is
-	 * picked — and the ring exists precisely to say how big the stroke will be.
-	 */
+	/** Brush diameter in stage pixels. The mask is built at full image resolution, so the
+	 *  ring must convert back through the crop or it shows the wrong size once a ratio is
+	 *  picked — and the ring exists to say how big the stroke will be. */
 	const brushRingPx = $derived(
 		Math.max(
 			6,
@@ -439,21 +395,13 @@
 	 *  size slider is being dragged and there is no pointer to follow. */
 	const brushAt = $derived(pointerView ?? { x: 0.5, y: 0.5 });
 
-	/**
-	 * Shown while hovering to paint, and while the size slider is being dragged.
-	 *
-	 * The slider case matters: without it the ring only appeared under the pointer,
-	 * so dragging the size control changed a number with nothing on the photo to
-	 * show what it meant.
-	 */
+	/** Shown while hovering to paint and while the size slider is dragged. The slider
+	 *  case matters: without it the ring only followed the pointer, so dragging the size
+	 *  control changed a number with nothing on the photo to show what it meant. */
 	const showBrushRing = $derived(brushActive && (pointer !== null || brushHint));
 
-	/**
-	 * Which side of the pointer the magnifier sits on.
-	 *
-	 * The framed box clips its overflow, so above-the-pointer would be cut off near
-	 * the top edge. Flipping below keeps it whole wherever you touch.
-	 */
+	/** Which side of the pointer the magnifier sits on. The framed box clips its
+	 *  overflow, so above-the-pointer gets cut off near the top edge. */
 	const loupeBelow = $derived((pointerView?.y ?? 0) < 0.42);
 
 	/** While sampling or painting, show what sits under the pointer, magnified. */
@@ -463,9 +411,8 @@
 			(drag?.kind === 'pick' || drag?.kind === 'brush')
 	);
 
-	// Nearest-neighbour magnification on purpose: this is a colour-sampling aid,
-	// and smoothing would blend neighbouring pixels into a colour that is not
-	// actually under the pointer.
+	// Nearest-neighbour on purpose: this is a colour-sampling aid, and smoothing would
+	// blend neighbouring pixels into a colour not actually under the pointer.
 	$effect(() => {
 		const el = loupeEl;
 		const pt = pointer;
@@ -490,8 +437,8 @@
 		box.setPointerCapture(e.pointerId);
 		const p = toImage(e);
 
-		// Region editing is available in both accent and range mode — range is
-		// where you shape the region, and accent is where you see its effect.
+		// Region editing works in both accent and range mode: range shapes the region,
+		// accent shows its effect.
 		if (scope === 'all') {
 			drag = { kind: 'pick' };
 			onpick(p);
@@ -499,9 +446,9 @@
 		}
 
 		if (shapeKind === 'brush') {
-			// Emit a fresh stroke list. Copying a few hundred points per pointer
-			// move is negligible next to the mask redraw, and keeping this
-			// immutable is what makes the parent's reactivity unambiguous.
+			// A fresh stroke list: copying a few hundred points per pointermove is
+			// negligible next to the mask redraw, and staying immutable keeps the
+			// parent's reactivity unambiguous.
 			const seg = { pts: [p], size: brushSize };
 			onstroke([...strokes, seg]);
 			drag = { kind: 'brush' };
@@ -624,20 +571,18 @@
 		return null;
 	}
 
-	// Region geometry lives in image space while this SVG is in view space, so
-	// every point goes through the crop mapping. Without that, cropping a ratio
-	// would slide the region off the pixels it was drawn over. The pixel-space
-	// viewBox itself is explained above, where the overlay's units are declared.
-	/** View-space pixels for a point stored in image space. */
+	/** View-space pixels for a point stored in image space. Region geometry is in image
+	 *  space and this SVG in view space, so every point goes through the crop mapping —
+	 *  without it, cropping would slide the region off the pixels it was drawn over. */
 	const toPx = (p: Point): Point => {
 		const v = imageToView(p);
 		return { x: v.x * px.w, y: v.y * px.h };
 	};
 
 	const overlay = $derived.by(() => {
-		// Only circle and rect have geometry to draw. A stale kind here would be
-		// rendered as an ellipse by the JSX fallback below, which is how a lasso
-		// could show a circle over the photo.
+		// Only circle and rect have geometry to draw. A stale kind would reach the
+		// markup's `{:else}` ellipse branch, which is how a lasso could show a circle
+		// over the photo.
 		if (!shape || (shape.kind !== 'rect' && shape.kind !== 'circle')) return null;
 		const W = px.w;
 		const H = px.h;
@@ -679,15 +624,9 @@
 		scope === 'all' || shapeKind === 'brush' || shapeKind === 'lasso' ? 'crosshair' : 'default'
 	);
 
-	/**
-	 * Paint the overlay preview.
-	 *
-	 * Uses the export's own painter at the export's own geometry, so the block can
-	 * only look like the saved file. The canvas is stretched over the frame's
-	 * padding box, which is the full composition, so its measured box is already in
-	 * composition units — the context just scales them to device pixels and the
-	 * export's numbers go in unchanged.
-	 */
+	/** Paint the overlay preview with the export's own painter at the export's own
+	 *  geometry, so the block can only look like the saved file. The canvas covers the
+	 *  frame's padding box — the whole composition — so the export's numbers go in as-is. */
 	$effect(() => {
 		if (!composeEl) return;
 		// `clientWidth` is not reactive; read the fit so a resize repaints.
@@ -771,10 +710,8 @@
 
 					<!--
 						The grab area is a narrow strip centred on the divider, not a
-						full-stage overlay. Covering the whole photo meant every touch
-						dragged the divider, which fought the drag-to-pick-color gesture.
-						Only this strip takes pointer events; the rest of the photo is
-						still the color picker.
+						full-stage overlay: covering the whole photo meant every touch
+						dragged the divider, fighting the drag-to-pick-color gesture.
 					-->
 					<div
 						class="stage__split"
@@ -824,18 +761,10 @@
 
 				{#if hasOverlays}
 					<!--
-						The swatch / code / mix block, painted exactly as the export paints
-						it.
-
-						It sits after the photo so it draws above it, and before the brush
-						ring, magnifier, and region handles so those stay on top and
-						grabbable — this previews the output, the editing chrome belongs
-						over it.
-
-						The photo box is not the composition, though: the block belongs in
-						the frame band around the photo. The negative inset stretches this
-						canvas out to the frame's padding box, which is exactly the
-						composition, so `inset: 0` inside it lands where the export puts it.
+						The swatch / code / mix block, painted as the export paints it. After the
+						photo so it draws above it, before the brush ring, magnifier and handles so
+						those stay grabbable. The negative inset stretches it to the frame's padding
+						box, where `inset: 0` lands exactly where the export puts the block.
 					-->
 					<canvas
 						class="stage__compose"
@@ -860,8 +789,8 @@
 				{/if}
 
 				{#if showLoupe && pointerView}
-					<!-- Magnifier: nearest-neighbour, so the colour you read is the colour
-					     actually under the pointer. -->
+					<!-- Magnifier: nearest-neighbour, so the colour read is the colour under
+					     the pointer. -->
 					<span
 						class="stage__loupe"
 						class:is-below={loupeBelow}
@@ -927,9 +856,8 @@
 			</div>
 		</div>
 	{:else if loading}
-		<!-- A quiet placeholder while the photo decodes. Without this the stage
-		     flashed the drag-and-drop prompt, which the arriving photo then
-		     replaced — it read as a glitch, and it certainly was one. -->
+		<!-- Quiet placeholder while the photo decodes; without it the stage flashed the
+		     drag-and-drop prompt the arriving photo then replaced, which read as a glitch. -->
 		<div class="stage-skeleton" aria-hidden="true">
 			<span class="stage-skeleton__dot"></span>
 		</div>
@@ -997,16 +925,11 @@
 		pointer-events: none;
 	}
 
-	/* Overlay preview: the swatch / code / mix block, at export geometry. Position
-	   and size are set inline, from the same fit the frame uses, so it spans the
-	   frame's padding box — the photo plus the band — rather than just the photo.
-	   Pointer events stay off so the photo underneath still picks colors.
+	/* Overlay preview: the swatch / code / mix block at export geometry, spanning the
+	   frame's padding box; pointer events stay off so the photo still picks colors.
 
-	   `max-width` has to be cancelled here. `app.css` clamps every canvas to 100%
-	   of its containing block, which is the photo box, but this canvas is
-	   deliberately wider than that: it also covers the frame band. Left clamped it
-	   lost one band width on each side, so the overlay block slid off the frame and
-	   onto the image. */
+	   `max-width: none` is load-bearing: `app.css` clamps every canvas to its containing
+	   block (the photo box), which slid the block off the frame and onto the image. */
 	.stage__compose {
 		position: absolute;
 		max-width: none;
@@ -1022,15 +945,14 @@
 		pointer-events: none;
 	}
 
-	/* Before/after divider. The element is a narrow strip centred on the split
-	   position: wide enough to grab comfortably (44px on touch, per the minimum
-	   target size), narrow enough that the rest of the photo still receives
+	/* Before/after divider: a narrow strip centred on the split position. Wide enough
+	   to grab comfortably, narrow enough that the rest of the photo still receives
 	   drag-to-pick-color. */
 	.stage__split {
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		/* 44px is the minimum comfortable touch target. */
+		/* 44px: minimum comfortable touch target. */
 		width: 44px;
 		margin-left: -22px;
 		cursor: ew-resize;
@@ -1094,8 +1016,8 @@
 		border-radius: 6px;
 	}
 
-	/* Quiet placeholder while a photo decodes. Sized to the stage so the layout
-	   does not jump when the real photo arrives. */
+	/* Quiet placeholder while a photo decodes, sized so the layout does not jump when
+	   the real photo arrives. */
 	.stage-skeleton {
 		display: grid;
 		place-items: center;
